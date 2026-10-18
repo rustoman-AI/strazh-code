@@ -59,24 +59,23 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-function riskFrom(text: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null {
-  const t = text.toUpperCase();
-  if (t.includes("CRITICAL")) return "CRITICAL";
-  if (t.includes("HIGH")) return "HIGH";
-  if (t.includes("MEDIUM")) return "MEDIUM";
-  if (t.includes("LOW")) return "LOW";
-  return null;
-}
-
-// Normalize an OSV severity label to a chip css class.
-function sevClass(s: string): string {
-  const t = s.toUpperCase();
+// Normalize an OSV severity label to a severity key used for colours.
+function sevKey(s: string): "critical" | "high" | "medium" | "low" | "unknown" {
+  const t = (s || "").toUpperCase();
   if (t === "CRITICAL") return "critical";
   if (t === "HIGH") return "high";
   if (t === "MODERATE" || t === "MEDIUM") return "medium";
   if (t === "LOW") return "low";
   return "unknown";
 }
+
+const SEV_COLOR: Record<string, string> = {
+  critical: "#ff4d6d",
+  high: "#ff8c42",
+  medium: "#e0b54a",
+  low: "#6b7a99",
+  unknown: "#55607a",
+};
 
 export default function StrazhApp() {
   const [repoPath, setRepoPath] = useState<string>("");
@@ -109,6 +108,7 @@ export default function StrazhApp() {
     setError("");
     setFix(null);
     setSelected(null);
+    setOsv(null);
     try {
       const codeRes = await invoke<CodeGraphResult>("scan_code_graph", { rootDir: repoPath });
       setCode(codeRes);
@@ -159,150 +159,148 @@ export default function StrazhApp() {
     return Object.entries(code.stats.languages).sort((a, b) => b[1] - a[1]);
   }, [code]);
 
-  const fixRisk = fix ? riskFrom(fix.fix_markdown) : null;
-
-  // Status bar values
   const repoName = basename(repoPath);
   const filesScanned = code ? code.stats.total_files : null;
   const pathsFound = osv ? paths.length : null;
 
   return (
-    <div className="strazh-root">
-      {/* Top status bar */}
-      <header className="strazh-topbar">
-        <div className="tb-brand">
-          <span className="tb-logo">🛡️</span>
-          <span className="tb-name">Strazh</span>
+    <div className="sz-root">
+      {/* Top bar */}
+      <header className="sz-topbar">
+        <div className="sz-brand">
+          <span className="sz-logo">◆</span>
+          <span className="sz-name">Strazh</span>
         </div>
-        <div className="tb-status">
-          <StatusItem label="repo" value={repoName || "—"} />
-          <StatusItem label="files" value={filesScanned ?? "—"} />
-          <StatusItem label="paths" value={pathsFound ?? "—"} />
-          <StatusItem label="model" value={MODEL} mono />
+        <div className="sz-status">
+          <TopStat label="repo" value={repoName || "—"} mono />
+          <TopStat label="files" value={filesScanned ?? "—"} />
+          <TopStat label="paths" value={pathsFound ?? "—"} />
+          <TopStat label="model" value={MODEL} mono accent />
         </div>
       </header>
 
-      {/* Main two-column body */}
-      <div className="strazh-body">
-        {/* Left: controls + counts */}
-        <aside className="strazh-left">
-          <h2 className="panel-title">Scan</h2>
-          <button className="btn block" onClick={pickRepo}>Choose folder…</button>
-          <code className="repo-path" title={repoPath}>{repoPath || "No repository selected"}</code>
+      <div className="sz-body">
+        {/* Left rail */}
+        <aside className="sz-rail">
+          <button className="sz-btn" onClick={pickRepo}>Choose folder…</button>
+          <code className="sz-path" title={repoPath}>{repoPath || "No repository selected"}</code>
           <button
-            className="btn btn-primary block"
+            className="sz-btn sz-btn-accent"
             onClick={scan}
             disabled={!repoPath || phase === "scanning"}
           >
             {phase === "scanning" ? "Scanning…" : "Run scan"}
           </button>
-          {error && <div className="alert">{error}</div>}
+          {error && <div className="sz-alert">{error}</div>}
 
-          {code && (
-            <div className="counts">
-              <Count label="Files" value={code.stats.total_files} />
-              <Count label="Lines" value={code.stats.total_lines} />
-              <Count label="Dependencies" value={code.stats.declared_deps} />
-              <Count label="Attack paths" value={osv ? paths.length : 0} />
-            </div>
-          )}
+          <div className="sz-tiles">
+            <Tile label="Files" value={code ? code.stats.total_files : "—"} />
+            <Tile label="Lines" value={code ? code.stats.total_lines : "—"} />
+            <Tile label="Dependencies" value={code ? code.stats.declared_deps : "—"} />
+            <Tile label="Attack paths" value={osv ? paths.length : "—"} accent={!!osv && paths.length > 0} />
+          </div>
 
-          {code && languages.length > 0 && (
-            <div className="langs">
-              <div className="langs-title">Languages</div>
-              <div className="lang-chips">
+          {languages.length > 0 && (
+            <div className="sz-langs">
+              <div className="sz-rail-label">Languages</div>
+              <div className="sz-chips">
                 {languages.map(([lang, n]) => (
-                  <span key={lang} className="lang-chip">{lang} <b>{n}</b></span>
+                  <span key={lang} className="sz-lang">{lang}<b>{n}</b></span>
                 ))}
               </div>
             </div>
           )}
         </aside>
 
-        {/* Right: attack path + fix */}
-        <main className="strazh-right">
-          <section className="panel">
-            <h2 className="panel-title">Attack path</h2>
+        {/* Main dashboard: two rows */}
+        <main className="sz-main">
+          {/* Row 1: attack-path graph + list */}
+          <section className="sz-panel sz-graph-panel">
+            <div className="sz-panel-head">
+              <h2 className="sz-panel-title">Attack path</h2>
+              {osv && paths.length > 0 && (
+                <span className="sz-count">{paths.length} advisor{paths.length === 1 ? "y" : "ies"}</span>
+              )}
+            </div>
 
-            {!osv && (
-              <p className="muted">Pick a repository and run a scan. Strazh queries OSV for the dependencies declared in the repo's own manifests.</p>
-            )}
-            {osv && paths.length === 0 && (
-              <p className="muted">
-                No exploitable path: {repoName || "this repo"} was scanned — {osv.stats.dependencies_queried} of {osv.stats.dependencies_declared} declared dependencies had a concrete version to query against OSV, and none returned a current advisory.
-              </p>
-            )}
+            {/* Graph area */}
+            <div className="sz-graph">
+              {phase === "scanning" && (
+                <div className="sz-progress">
+                  <div className="sz-progress-text">
+                    Querying OSV{code ? ` · ${code.stats.declared_deps} dependencies` : ""}
+                  </div>
+                  <div className="sz-bar"><div className="sz-bar-fill" /></div>
+                </div>
+              )}
 
-            {paths.length > 1 && (
-              <>
-                <div className="path-tabs">
-                  {paths.slice(0, 25).map((p, i) => (
+              {phase !== "scanning" && !osv && (
+                <div className="sz-graph-empty">Pick a repository and run a scan to map attack paths from its own dependencies.</div>
+              )}
+
+              {phase !== "scanning" && osv && paths.length === 0 && (
+                <div className="sz-graph-empty">
+                  No exploitable path — {osv.stats.dependencies_queried} of {osv.stats.dependencies_declared} dependencies queried against OSV, none with a current advisory.
+                </div>
+              )}
+
+              {phase !== "scanning" && activePath && (
+                <PathGraph path={activePath} />
+              )}
+            </div>
+
+            {/* Scrollable severity-sorted list */}
+            {paths.length > 0 && (
+              <div className="sz-list">
+                {paths.slice(0, 12).map((p, i) => {
+                  const idx = i;
+                  const k = sevKey(p.severity);
+                  return (
                     <button
                       key={i}
-                      className={`path-tab sev-${sevClass(p.severity)} ${selected === i ? "active" : ""}`}
-                      onClick={() => { setSelected(i); setFix(null); }}
-                      title={`${p.target_component} — ${p.severity}`}
+                      className={`sz-row ${selected === idx ? "active" : ""}`}
+                      onClick={() => { setSelected(idx); setFix(null); }}
                     >
-                      {p.vulnerability_id}
+                      <span className="sz-dot" style={{ background: SEV_COLOR[k] }} />
+                      <span className="sz-row-id">{p.vulnerability_id}</span>
+                      <span className="sz-row-pkg">{p.target_component}</span>
+                      <span className={`sz-sev sev-${k}`}>{p.severity}</span>
                     </button>
-                  ))}
-                </div>
-                {paths.length > 25 && (
-                  <p className="muted" style={{ marginBottom: 12 }}>
-                    Showing 25 of {paths.length} advisories (sorted by severity).
-                  </p>
+                  );
+                })}
+                {paths.length > 12 && (
+                  <div className="sz-list-more">+{paths.length - 12} more, sorted by severity</div>
                 )}
-              </>
-            )}
-
-            {activePath && (
-              <div className="chain-wrap">
-                <div className="chain-vuln">
-                  <span className="vuln-badge">{activePath.vulnerability_id}</span>
-                  {activePath.severity && (
-                    <span className={`risk-chip risk-${sevClass(activePath.severity)}`}>{activePath.severity}</span>
-                  )}
-                  <span className="eco-tag">{activePath.ecosystem}</span>
-                </div>
-                {activePath.summary && <p className="vuln-summary">{activePath.summary}</p>}
-                <ol className="vchain">
-                  {activePath.proof_chain.map((step, i) => {
-                    const isEntry = i === 0;
-                    const isSink = i === activePath.proof_chain.length - 1;
-                    const role = isEntry ? "entry" : isSink ? "advisory" : `hop ${i}`;
-                    const cls = isEntry ? "entry" : isSink ? "sink" : "hop";
-                    return (
-                      <li key={i} className={`vnode ${cls}`}>
-                        <span className="vrole">{role}</span>
-                        <span className="vlabel">{step}</span>
-                      </li>
-                    );
-                  })}
-                </ol>
               </div>
             )}
           </section>
 
-          <section className="panel">
-            <div className="fix-header">
-              <h2 className="panel-title">Nemotron fix</h2>
-              {fixRisk && <span className={`risk-chip risk-${fixRisk.toLowerCase()}`}>{fixRisk}</span>}
+          {/* Row 2: Nemotron fix */}
+          <section className="sz-panel sz-fix-panel">
+            <div className="sz-panel-head">
+              <h2 className="sz-panel-title">Nemotron fix</h2>
+              {/* Chip reflects the SELECTED PATH's real OSV severity, not the fix text. */}
+              {activePath && (
+                <span className={`sz-sev sev-${sevKey(activePath.severity)}`}>{activePath.severity}</span>
+              )}
+              <div className="sz-panel-head-spacer" />
+              <button
+                className="sz-btn sz-btn-accent sz-btn-sm"
+                onClick={generateFix}
+                disabled={!activePath || phase === "fixing"}
+              >
+                {phase === "fixing" ? "Asking Nemotron…" : "Generate fix"}
+              </button>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={generateFix}
-              disabled={!activePath || phase === "fixing"}
-            >
-              {phase === "fixing" ? "Asking Nemotron…" : "Generate fix with Nemotron"}
-            </button>
-            {fixError && <div className="alert">{fixError}</div>}
+
+            {fixError && <div className="sz-alert">{fixError}</div>}
             {!fix && !fixError && (
-              <p className="muted">Select an attack path and generate a fix written live by {MODEL}.</p>
+              <div className="sz-fix-empty">Select a path and generate a fix written live by {MODEL}.</div>
             )}
             {fix && (
-              <div className="fix-card">
-                <div className="fix-model">model: {fix.model}</div>
-                <pre className="fix-md">{fix.fix_markdown}</pre>
+              <div className="sz-fix">
+                <div className="sz-fix-model">model: {fix.model}</div>
+                <pre className="sz-fix-md">{fix.fix_markdown}</pre>
               </div>
             )}
           </section>
@@ -311,110 +309,167 @@ export default function StrazhApp() {
 
       <style>{`
         *{box-sizing:border-box}
-        .strazh-root{min-height:100vh;width:100vw;background:#0a0a16;color:#e6e6f0;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column}
+        .sz-root{height:100vh;width:100vw;display:flex;flex-direction:column;background:#0b0d12;color:#e7e9f0;
+          font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
 
-        /* Top status bar */
-        .strazh-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 20px;border-bottom:1px solid #1c1c33;background:#0e0e1a;flex-wrap:wrap}
-        .tb-brand{display:flex;align-items:center;gap:8px}
-        .tb-logo{font-size:20px}
-        .tb-name{font-size:16px;font-weight:700;letter-spacing:.5px}
-        .tb-status{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
-        .si{display:flex;align-items:baseline;gap:6px}
-        .si-lbl{font-size:10px;color:#6f6f92;text-transform:uppercase;letter-spacing:.5px}
-        .si-val{font-size:13px;color:#e6e6f0;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .si-val.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#9fd0ff}
+        /* Top bar */
+        .sz-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+          padding:0 20px;height:52px;border-bottom:1px solid #1b1f2b;background:#0e1118;flex-shrink:0}
+        .sz-brand{display:flex;align-items:center;gap:9px}
+        .sz-logo{color:#7c5cff;font-size:16px}
+        .sz-name{font-size:15px;font-weight:700;letter-spacing:.4px}
+        .sz-status{display:flex;align-items:center;gap:26px}
+        .sz-ts{display:flex;flex-direction:column;line-height:1.2}
+        .sz-ts-lbl{font-size:9px;color:#5b6479;text-transform:uppercase;letter-spacing:.6px}
+        .sz-ts-val{font-size:13px;color:#e7e9f0;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .sz-ts-val.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+        .sz-ts-val.accent{color:#9f8bff}
 
-        /* Two-column body, full width */
-        .strazh-body{flex:1;display:flex;min-height:0;width:100%}
-        .strazh-left{width:300px;min-width:260px;border-right:1px solid #1c1c33;background:#0d0d1c;padding:18px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
-        .strazh-right{flex:1;min-width:0;padding:18px 24px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
+        .sz-body{flex:1;display:flex;min-height:0}
 
-        .panel{background:#101024;border:1px solid #1c1c33;border-radius:12px;padding:18px 20px}
-        .panel-title{margin:0 0 12px;font-size:13px;color:#c9c9e8;text-transform:uppercase;letter-spacing:.6px}
+        /* Left rail */
+        .sz-rail{width:280px;min-width:260px;flex-shrink:0;border-right:1px solid #1b1f2b;background:#0d1016;
+          padding:16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+        .sz-btn{background:#171b26;color:#e7e9f0;border:1px solid #262c3b;border-radius:8px;padding:9px 14px;
+          font-size:13px;cursor:pointer;transition:all .14s;width:100%}
+        .sz-btn:hover:not(:disabled){background:#1e2431;border-color:#343c50}
+        .sz-btn:disabled{opacity:.4;cursor:not-allowed}
+        .sz-btn-accent{background:#7c5cff;border-color:#7c5cff;color:#fff;font-weight:600}
+        .sz-btn-accent:hover:not(:disabled){background:#8c6fff;border-color:#8c6fff}
+        .sz-btn-sm{width:auto;padding:6px 12px;font-size:12px}
+        .sz-path{display:block;font-size:11px;color:#8690a5;background:#0b0d12;padding:8px 10px;border-radius:6px;
+          border:1px solid #1b1f2b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+          font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+        .sz-alert{padding:9px 11px;border-radius:7px;background:#2a1118;border:1px solid #5c2130;color:#ffb3bd;
+          font-size:12px;white-space:pre-wrap;word-break:break-word}
 
-        .btn{background:#1a1a3a;color:#e6e6f0;border:1px solid #2a2a55;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;transition:all .15s}
-        .btn:hover:not(:disabled){background:#24244d;border-color:#3a3a70}
-        .btn:disabled{opacity:.45;cursor:not-allowed}
-        .btn.block{width:100%}
-        .btn-primary{background:#4f46e5;border-color:#6366f1}
-        .btn-primary:hover:not(:disabled){background:#5b52f0}
+        /* Stat tiles — the visual anchor */
+        .sz-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
+        .sz-tile{background:#141824;border:1px solid #1b1f2b;border-radius:10px;padding:14px 14px 12px;display:flex;flex-direction:column;gap:6px}
+        .sz-tile-val{font-size:26px;font-weight:700;letter-spacing:-.5px;color:#f2f3f8;font-variant-numeric:tabular-nums}
+        .sz-tile-val.accent{color:#9f8bff}
+        .sz-tile-lbl{font-size:10px;color:#5b6479;text-transform:uppercase;letter-spacing:.6px}
 
-        .repo-path{display:block;font-size:11.5px;color:#8c8ca8;background:#0a0a16;padding:8px 10px;border-radius:6px;border:1px solid #1c1c33;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .alert{padding:10px 12px;border-radius:8px;background:#2a1216;border:1px solid #5c1f28;color:#ffb3bd;font-size:12px;white-space:pre-wrap;word-break:break-word}
+        .sz-rail-label{font-size:10px;color:#5b6479;text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px}
+        .sz-chips{display:flex;flex-wrap:wrap;gap:6px}
+        .sz-lang{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#c3c9d6;background:#141824;
+          border:1px solid #1b1f2b;border-radius:12px;padding:3px 9px}
+        .sz-lang b{color:#9f8bff;font-weight:600}
 
-        .counts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
-        .count{background:#0a0a16;border:1px solid #1c1c33;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column}
-        .count-val{font-size:20px;font-weight:700;color:#e6e6f0}
-        .count-lbl{font-size:10px;color:#8c8ca8;text-transform:uppercase;letter-spacing:.5px}
+        /* Main dashboard */
+        .sz-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:14px;padding:16px 18px;overflow:hidden}
+        .sz-panel{background:#141824;border:1px solid #1b1f2b;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;min-height:0}
+        .sz-graph-panel{flex:1;min-height:0}
+        .sz-fix-panel{flex:1;min-height:0}
+        .sz-panel-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+        .sz-panel-title{margin:0;font-size:12px;color:#aab2c5;text-transform:uppercase;letter-spacing:.7px;font-weight:600}
+        .sz-panel-head-spacer{flex:1}
+        .sz-count{font-size:11px;color:#8690a5;font-variant-numeric:tabular-nums}
 
-        .langs{margin-top:4px}
-        .langs-title{font-size:10px;color:#6f6f92;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-        .lang-chips{display:flex;flex-wrap:wrap;gap:6px}
-        .lang-chip{font-size:11px;color:#c9c9e8;background:#15152e;border:1px solid #24244d;border-radius:12px;padding:3px 9px}
-        .lang-chip b{color:#9fd0ff}
+        /* Graph area */
+        .sz-graph{min-height:150px;display:flex;align-items:center;justify-content:center;
+          border:1px solid #1b1f2b;border-radius:10px;background:#0f131c;padding:14px;margin-bottom:12px}
+        .sz-graph-empty{color:#6b7488;font-size:13px;text-align:center;padding:0 12px}
 
-        .muted{color:#8c8ca8;font-size:13px;margin:0;line-height:1.5}
+        /* Progress state */
+        .sz-progress{width:100%;max-width:480px;display:flex;flex-direction:column;gap:10px;align-items:center}
+        .sz-progress-text{font-size:13px;color:#aab2c5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+        .sz-bar{width:100%;height:4px;background:#1b1f2b;border-radius:2px;overflow:hidden}
+        .sz-bar-fill{height:100%;width:35%;background:#7c5cff;border-radius:2px;animation:slide 1.1s ease-in-out infinite}
+        @keyframes slide{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
 
-        .path-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
-        .path-tab{background:#0a0a16;border:1px solid #1c1c33;color:#9f9fe0;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
-        .path-tab.active{background:#4f46e5;border-color:#6366f1;color:#fff}
-        .path-tab.sev-critical{border-left:3px solid #ff5277}
-        .path-tab.sev-high{border-left:3px solid #ff8c4a}
-        .path-tab.sev-medium{border-left:3px solid #e0b54a}
-        .path-tab.sev-low{border-left:3px solid #4ac87a}
-        .path-tab.sev-unknown{border-left:3px solid #555}
+        /* Path list */
+        .sz-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+        .sz-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#0f131c;
+          border:1px solid #1b1f2b;border-radius:8px;padding:8px 11px;cursor:pointer;transition:all .12s}
+        .sz-row:hover{border-color:#2c3448;background:#121726}
+        .sz-row.active{border-color:#7c5cff;background:#171433}
+        .sz-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+        .sz-row-id{font-size:12.5px;color:#e7e9f0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+        .sz-row-pkg{flex:1;font-size:12px;color:#8690a5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .sz-list-more{font-size:11px;color:#6b7488;padding:6px 2px}
 
-        .chain-vuln{margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .vuln-badge{background:#5c1f28;color:#ffb3bd;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;letter-spacing:.3px}
-        .eco-tag{font-size:11px;color:#9fd0ff;background:#15152e;border:1px solid #24244d;border-radius:12px;padding:2px 9px}
-        .vuln-summary{margin:0 0 12px;font-size:12.5px;color:#c9c9e8;line-height:1.5}
+        /* Severity chips */
+        .sz-sev{font-size:10.5px;font-weight:700;letter-spacing:.4px;border-radius:11px;padding:3px 9px;flex-shrink:0}
+        .sev-critical{background:#3b0d1a;color:#ff4d6d;border:1px solid #6b1830}
+        .sev-high{background:#3a1e0c;color:#ff8c42;border:1px solid #6b3a16}
+        .sev-medium{background:#342b0c;color:#e0b54a;border:1px solid #5f4f17}
+        .sev-low{background:#1a2030;color:#9fb0cc;border:1px solid #2c3850}
+        .sev-unknown{background:#191d28;color:#9aa3b8;border:1px solid #2a3142}
 
-        /* Vertical attack chain */
-        .vchain{list-style:none;margin:0;padding:0;position:relative}
-        .vnode{position:relative;display:flex;flex-direction:column;gap:2px;background:#0a0a16;border:1px solid #24244d;border-radius:8px;padding:10px 14px;margin:0 0 0 18px}
-        .vnode:not(:last-child){margin-bottom:22px}
-        .vnode:not(:last-child)::after{content:"";position:absolute;left:-10px;top:100%;height:22px;width:2px;background:#2a2a55}
-        .vnode::before{content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:#2a2a55;border:2px solid #0a0a16}
-        .vnode.entry{border-color:#3a6ea5}
-        .vnode.entry::before{background:#3a6ea5}
-        .vnode.sink{border-color:#5c1f28}
-        .vnode.sink::before{background:#d64558}
-        .vrole{font-size:10px;color:#6f6f92;text-transform:uppercase;letter-spacing:.5px}
-        .vlabel{font-size:13px;color:#e6e6f0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word}
-        .vnode.entry .vlabel{color:#9fd0ff}
-        .vnode.sink .vlabel{color:#ffb3bd}
+        /* Fix panel */
+        .sz-fix-empty{color:#6b7488;font-size:13px;padding:8px 2px}
+        .sz-fix{flex:1;min-height:0;display:flex;flex-direction:column;background:#0f131c;border:1px solid #1b1f2b;
+          border-radius:10px;overflow:hidden}
+        .sz-fix-model{font-size:11px;color:#8690a5;padding:8px 12px;border-bottom:1px solid #1b1f2b;background:#0d1016;
+          font-family:ui-monospace,SFMono-Regular,Menlo,monospace;flex-shrink:0}
+        .sz-fix-md{margin:0;padding:14px;font-size:12.5px;line-height:1.6;color:#d7dbe6;white-space:pre-wrap;
+          word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:auto;flex:1;min-height:0}
 
-        .fix-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-        .fix-header .panel-title{margin:0}
-        .risk-chip{font-size:11px;font-weight:700;letter-spacing:.5px;border-radius:12px;padding:3px 10px}
-        .risk-critical{background:#4a1020;color:#ff8fae}
-        .risk-high{background:#5c1f28;color:#ffb3bd}
-        .risk-medium{background:#5c4a1f;color:#ffe0a3}
-        .risk-low{background:#1f5c3a;color:#a3ffc8}
-        .risk-unknown{background:#2a2a4a;color:#b8b8d8}
-
-        .fix-card{margin-top:14px;background:#0a0a16;border:1px solid #1c1c33;border-radius:10px;overflow:hidden}
-        .fix-model{font-size:11px;color:#8c8ca8;padding:8px 12px;border-bottom:1px solid #1c1c33;background:#0e0e1a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-        .fix-md{margin:0;padding:16px;font-size:12.5px;line-height:1.6;color:#d8d8ec;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-height:520px;overflow:auto}
+        /* scrollbars */
+        .sz-rail::-webkit-scrollbar,.sz-list::-webkit-scrollbar,.sz-fix-md::-webkit-scrollbar{width:7px;height:7px}
+        .sz-rail::-webkit-scrollbar-thumb,.sz-list::-webkit-scrollbar-thumb,.sz-fix-md::-webkit-scrollbar-thumb{background:#262c3b;border-radius:4px}
       `}</style>
     </div>
   );
 }
 
-function StatusItem({ label, value, mono }: { label: string; value: string | number; mono?: boolean }) {
+// ── Attack-path graph: entry file → package@version → advisory ──
+function PathGraph({ path }: { path: OsvPath }) {
+  const k = sevKey(path.severity);
+  const advColor = SEV_COLOR[k];
+  const entryLabel = basename(path.entry_point) || path.entry_point;
+
   return (
-    <div className="si">
-      <span className="si-lbl">{label}</span>
-      <span className={`si-val ${mono ? "mono" : ""}`} title={String(value)}>{value}</span>
+    <div className="pg">
+      <div className="pg-node">
+        <span className="pg-circle" style={{ borderColor: "#7c5cff", color: "#9f8bff" }}>●</span>
+        <span className="pg-role">entry</span>
+        <span className="pg-label" title={path.entry_point}>{entryLabel}</span>
+      </div>
+      <div className="pg-edge" />
+      <div className="pg-node">
+        <span className="pg-circle" style={{ borderColor: "#343c50" }} />
+        <span className="pg-role">package</span>
+        <span className="pg-label">{path.target_component}</span>
+      </div>
+      <div className="pg-edge" />
+      <div className="pg-node">
+        <span className="pg-circle pg-adv" style={{ borderColor: advColor, color: advColor, background: advColor + "22" }}>!</span>
+        <span className="pg-role">advisory</span>
+        <span className="pg-label" style={{ color: advColor }}>{path.vulnerability_id}</span>
+      </div>
+
+      <style>{`
+        .pg{display:flex;align-items:center;justify-content:center;gap:0;width:100%;flex-wrap:wrap}
+        .pg-node{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:120px;max-width:260px}
+        .pg-circle{width:34px;height:34px;border-radius:50%;border:2px solid #343c50;display:flex;align-items:center;
+          justify-content:center;font-size:13px;background:#0b0d12;color:#8690a5}
+        .pg-adv{font-weight:800}
+        .pg-role{font-size:9px;color:#5b6479;text-transform:uppercase;letter-spacing:.6px}
+        .pg-label{font-size:12.5px;color:#e7e9f0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+          text-align:center;word-break:break-word;line-height:1.35}
+        .pg-edge{flex:0 0 48px;height:2px;background:linear-gradient(90deg,#343c50,#2c3448);margin:0 2px;margin-bottom:34px}
+      `}</style>
     </div>
   );
 }
 
-function Count({ label, value }: { label: string; value: string | number }) {
+function TopStat({ label, value, mono, accent }: { label: string; value: string | number; mono?: boolean; accent?: boolean }) {
   return (
-    <div className="count">
-      <span className="count-val">{value}</span>
-      <span className="count-lbl">{label}</span>
+    <div className="sz-ts">
+      <span className="sz-ts-lbl">{label}</span>
+      <span className={`sz-ts-val ${mono ? "mono" : ""} ${accent ? "accent" : ""}`} title={String(value)}>{value}</span>
+    </div>
+  );
+}
+
+function Tile({ label, value, accent }: { label: string; value: string | number; accent?: boolean }) {
+  return (
+    <div className="sz-tile">
+      <span className={`sz-tile-val ${accent ? "accent" : ""}`}>{value}</span>
+      <span className="sz-tile-lbl">{label}</span>
     </div>
   );
 }
