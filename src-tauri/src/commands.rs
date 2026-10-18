@@ -702,6 +702,7 @@ pub struct NemotronFix {
 #[tauri::command]
 pub async fn generate_nemotron_fix(
     vuln_id: String,
+    advisory_summary: Option<String>,
     entry_point: String,
     target_component: String,
     proof_chain: Vec<String>,
@@ -716,6 +717,7 @@ pub async fn generate_nemotron_fix(
     let fix_markdown = client
         .generate_fix(
             &vuln_id,
+            advisory_summary.as_deref().unwrap_or(""),
             &entry_point,
             &target_component,
             &proof_chain,

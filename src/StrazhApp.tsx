@@ -137,6 +137,7 @@ export default function StrazhApp() {
     try {
       const res = await invoke<NemotronFix>("generate_nemotron_fix", {
         vulnId: path.vulnerability_id,
+        advisorySummary: path.summary,
         entryPoint: path.entry_point,
         targetComponent: path.target_component,
         proofChain: path.proof_chain,

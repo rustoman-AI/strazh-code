@@ -211,6 +211,7 @@ impl NebiusClient {
     pub async fn generate_fix(
         &self,
         vuln_id: &str,
+        advisory_summary: &str,
         entry_point: &str,
         target_component: &str,
         proof_chain: &[String],
@@ -218,6 +219,7 @@ impl NebiusClient {
     ) -> Result<String> {
         let system_prompt = "You are a senior application-security engineer. Given a concrete \
             attack path discovered by a supply-chain scanner, write a minimal, correct fix. \
+            Ground your root cause in the provided advisory summary; do not speculate beyond it. \
             Respond in Markdown with two sections: '## Root cause' (2-3 sentences) and \
             '## Fix' (a fenced code block containing only the patched code). Keep it concise.";
 
@@ -227,15 +229,23 @@ impl NebiusClient {
             proof_chain.join("  ->  ")
         };
 
+        let advisory = if advisory_summary.trim().is_empty() {
+            "(no advisory summary provided)".to_string()
+        } else {
+            advisory_summary.trim().to_string()
+        };
+
         let user_prompt = format!(
-            "Vulnerability: {vuln}\nEntry point: {entry}\nTarget component: {target}\nAttack path: \
-             {chain}\n\nRelevant source context:\n{src}\n\nWrite the fix.",
+            "Vulnerability: {vuln}\nAdvisory summary: {advisory}\nEntry point: {entry}\nTarget \
+             component: {target}\nAttack path: {chain}\n\nRelevant source context:\n{src}\n\nWrite \
+             the fix.",
             vuln = vuln_id,
+            advisory = advisory,
             entry = entry_point,
             target = target_component,
             chain = chain,
             src = if source_excerpt.is_empty() {
-                "(source not available; reason from the attack path and component)"
+                "(source not available; reason from the advisory summary, attack path and component)"
             } else {
                 source_excerpt
             },
