@@ -100,10 +100,12 @@ export default function StrazhApp() {
       const codeRes = await invoke<CodeGraphResult>("scan_code_graph", { rootDir: repoPath });
       setCode(codeRes);
 
-      const sbomRes = await invoke<string>("generate_sbom");
-
+      // Attack paths are derived ONLY from the scanned repo: its real entry
+      // files and the dependencies declared in its own manifests. We do not
+      // inject any sample SBOM, so a path appears only if it is grounded in
+      // this repository. No bundled/sample CVE is used.
       const paths = await invoke<DatalogResult>("compute_attack_paths", {
-        sbomJson: sbomRes,
+        sbomJson: null,
         astRoot: repoPath,
       });
       setDatalog(paths);
@@ -215,7 +217,7 @@ export default function StrazhApp() {
             )}
             {datalog && paths.length === 0 && (
               <p className="muted">
-                No attack paths were derived from {repoName || "this repo"} ({datalog.stats.components_analyzed} components, {datalog.stats.entry_points_analyzed} entry points) — try a repo whose dependencies carry known vulnerabilities.
+                No exploitable path: {repoName || "this repo"} was scanned ({datalog.stats.entry_points_analyzed} entry points) and no attack path grounded in its own dependencies was found.
               </p>
             )}
 
