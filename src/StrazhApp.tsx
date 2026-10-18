@@ -168,8 +168,7 @@ export default function StrazhApp() {
       {/* Top bar */}
       <header className="sz-topbar">
         <div className="sz-brand">
-          <span className="sz-logo">◆</span>
-          <span className="sz-name">Strazh</span>
+          <img className="sz-logo-img" src="/strazh-logo.png" alt="Strazh" />
         </div>
         <div className="sz-status">
           <TopStat label="repo" value={repoName || "—"} mono />
@@ -315,9 +314,8 @@ export default function StrazhApp() {
         /* Top bar */
         .sz-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
           padding:0 20px;height:52px;border-bottom:1px solid #1b1f2b;background:#0e1118;flex-shrink:0}
-        .sz-brand{display:flex;align-items:center;gap:9px}
-        .sz-logo{color:#7c5cff;font-size:16px}
-        .sz-name{font-size:15px;font-weight:700;letter-spacing:.4px}
+        .sz-brand{display:flex;align-items:center}
+        .sz-logo-img{height:40px;width:auto;display:block;border-radius:6px}
         .sz-status{display:flex;align-items:center;gap:26px}
         .sz-ts{display:flex;flex-direction:column;line-height:1.2}
         .sz-ts-lbl{font-size:9px;color:#5b6479;text-transform:uppercase;letter-spacing:.6px}
