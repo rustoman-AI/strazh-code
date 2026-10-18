@@ -38,6 +38,15 @@ The API key is read **only** from the `NEBIUS_API_KEY` environment variable. It
 is never hardcoded, printed, logged, or committed. The `Authorization` header
 is marked sensitive so it is never surfaced in logs.
 
+## Live Nebius proof
+
+- Model: nvidia/Nemotron-3_5-Lightning
+- Endpoint: https://api.tokenfactory.nebius.com/v1
+- Result: SUCCESS, process exit 0
+- Risk returned: HIGH
+
+Nemotron classified `rm -rf / --no-preserve-root` as a destructive root wipe and returned analysis plus mitigations.
+
 ## Prerequisites
 
 - Node.js 18+ and npm
