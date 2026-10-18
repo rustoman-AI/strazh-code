@@ -23,22 +23,24 @@ interface CodeGraphResult {
   stats: AstStats;
 }
 
-interface ExploitationPath {
+interface OsvPath {
   entry_point: string;
   target_component: string;
   vulnerability_id: string;
+  severity: string;
+  ecosystem: string;
+  summary: string | null;
   proof_chain: string[];
 }
 
-interface DatalogResult {
-  exploitation_paths: ExploitationPath[];
-  blast_radius: { vulnerability_id: string; vulnerable_component: string; total_affected: number }[];
+interface OsvScanResult {
+  exploitation_paths: OsvPath[];
   stats: {
-    total_facts: number;
-    total_derived: number;
-    components_analyzed: number;
-    vulnerabilities_analyzed: number;
-    entry_points_analyzed: number;
+    dependencies_declared: number;
+    dependencies_queried: number;
+    vulnerable_dependencies: number;
+    entry_points: number;
+    advisories_found: number;
   };
 }
 
@@ -57,12 +59,23 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-function riskFrom(text: string): "HIGH" | "MEDIUM" | "LOW" | null {
+function riskFrom(text: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null {
   const t = text.toUpperCase();
+  if (t.includes("CRITICAL")) return "CRITICAL";
   if (t.includes("HIGH")) return "HIGH";
   if (t.includes("MEDIUM")) return "MEDIUM";
   if (t.includes("LOW")) return "LOW";
   return null;
+}
+
+// Normalize an OSV severity label to a chip css class.
+function sevClass(s: string): string {
+  const t = s.toUpperCase();
+  if (t === "CRITICAL") return "critical";
+  if (t === "HIGH") return "high";
+  if (t === "MODERATE" || t === "MEDIUM") return "medium";
+  if (t === "LOW") return "low";
+  return "unknown";
 }
 
 export default function StrazhApp() {
@@ -71,7 +84,7 @@ export default function StrazhApp() {
   const [error, setError] = useState<string>("");
 
   const [code, setCode] = useState<CodeGraphResult | null>(null);
-  const [datalog, setDatalog] = useState<DatalogResult | null>(null);
+  const [osv, setOsv] = useState<OsvScanResult | null>(null);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [fix, setFix] = useState<NemotronFix | null>(null);
@@ -83,7 +96,7 @@ export default function StrazhApp() {
     if (typeof dir === "string") {
       setRepoPath(dir);
       setCode(null);
-      setDatalog(null);
+      setOsv(null);
       setSelected(null);
       setFix(null);
       setPhase("idle");
@@ -100,16 +113,14 @@ export default function StrazhApp() {
       const codeRes = await invoke<CodeGraphResult>("scan_code_graph", { rootDir: repoPath });
       setCode(codeRes);
 
-      // Attack paths are derived ONLY from the scanned repo: its real entry
-      // files and the dependencies declared in its own manifests. We do not
-      // inject any sample SBOM, so a path appears only if it is grounded in
-      // this repository. No bundled/sample CVE is used.
-      const paths = await invoke<DatalogResult>("compute_attack_paths", {
-        sbomJson: null,
-        astRoot: repoPath,
-      });
-      setDatalog(paths);
-      setSelected(paths.exploitation_paths.length > 0 ? 0 : null);
+      // Attack paths are grounded entirely in the scanned repo: real entry
+      // files from the AST scan + dependencies declared in this repo's own
+      // manifests, scored against the live OSV advisory database. A path only
+      // appears when OSV returns a real advisory for a declared package+version.
+      // No sample SBOM, no hardcoded CVE.
+      const res = await invoke<OsvScanResult>("scan_with_osv", { rootDir: repoPath });
+      setOsv(res);
+      setSelected(res.exploitation_paths.length > 0 ? 0 : null);
       setPhase("scanned");
     } catch (e) {
       setError(String(e));
@@ -118,8 +129,8 @@ export default function StrazhApp() {
   }, [repoPath]);
 
   const generateFix = useCallback(async () => {
-    if (!datalog || selected === null) return;
-    const path = datalog.exploitation_paths[selected];
+    if (!osv || selected === null) return;
+    const path = osv.exploitation_paths[selected];
     setPhase("fixing");
     setFix(null);
     setFixError("");
@@ -137,9 +148,9 @@ export default function StrazhApp() {
     } finally {
       setPhase("scanned");
     }
-  }, [datalog, selected]);
+  }, [osv, selected]);
 
-  const paths = datalog?.exploitation_paths ?? [];
+  const paths = osv?.exploitation_paths ?? [];
   const activePath = selected !== null ? paths[selected] : null;
 
   const languages = useMemo(() => {
@@ -152,7 +163,7 @@ export default function StrazhApp() {
   // Status bar values
   const repoName = basename(repoPath);
   const filesScanned = code ? code.stats.total_files : null;
-  const pathsFound = datalog ? paths.length : null;
+  const pathsFound = osv ? paths.length : null;
 
   return (
     <div className="strazh-root">
@@ -191,7 +202,7 @@ export default function StrazhApp() {
               <Count label="Files" value={code.stats.total_files} />
               <Count label="Lines" value={code.stats.total_lines} />
               <Count label="Dependencies" value={code.stats.declared_deps} />
-              <Count label="Attack paths" value={datalog ? paths.length : 0} />
+              <Count label="Attack paths" value={osv ? paths.length : 0} />
             </div>
           )}
 
@@ -212,49 +223,60 @@ export default function StrazhApp() {
           <section className="panel">
             <h2 className="panel-title">Attack path</h2>
 
-            {!datalog && (
-              <p className="muted">Pick a repository and run a scan to compute attack paths from the graph.</p>
+            {!osv && (
+              <p className="muted">Pick a repository and run a scan. Strazh queries OSV for the dependencies declared in the repo's own manifests.</p>
             )}
-            {datalog && paths.length === 0 && (
+            {osv && paths.length === 0 && (
               <p className="muted">
-                No exploitable path: {repoName || "this repo"} was scanned ({datalog.stats.entry_points_analyzed} entry points) and no attack path grounded in its own dependencies was found.
+                No exploitable path: {repoName || "this repo"} was scanned — {osv.stats.dependencies_queried} of {osv.stats.dependencies_declared} declared dependencies had a concrete version to query against OSV, and none returned a current advisory.
               </p>
             )}
 
             {paths.length > 1 && (
-              <div className="path-tabs">
-                {paths.map((p, i) => (
-                  <button
-                    key={i}
-                    className={`path-tab ${selected === i ? "active" : ""}`}
-                    onClick={() => { setSelected(i); setFix(null); }}
-                  >
-                    {p.vulnerability_id}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="path-tabs">
+                  {paths.slice(0, 25).map((p, i) => (
+                    <button
+                      key={i}
+                      className={`path-tab sev-${sevClass(p.severity)} ${selected === i ? "active" : ""}`}
+                      onClick={() => { setSelected(i); setFix(null); }}
+                      title={`${p.target_component} — ${p.severity}`}
+                    >
+                      {p.vulnerability_id}
+                    </button>
+                  ))}
+                </div>
+                {paths.length > 25 && (
+                  <p className="muted" style={{ marginBottom: 12 }}>
+                    Showing 25 of {paths.length} advisories (sorted by severity).
+                  </p>
+                )}
+              </>
             )}
 
             {activePath && (
               <div className="chain-wrap">
                 <div className="chain-vuln">
                   <span className="vuln-badge">{activePath.vulnerability_id}</span>
+                  {activePath.severity && (
+                    <span className={`risk-chip risk-${sevClass(activePath.severity)}`}>{activePath.severity}</span>
+                  )}
+                  <span className="eco-tag">{activePath.ecosystem}</span>
                 </div>
+                {activePath.summary && <p className="vuln-summary">{activePath.summary}</p>}
                 <ol className="vchain">
-                  <li className="vnode entry">
-                    <span className="vrole">entry</span>
-                    <span className="vlabel">{activePath.entry_point}</span>
-                  </li>
-                  {activePath.proof_chain.map((hop, i) => (
-                    <li key={i} className="vnode hop">
-                      <span className="vrole">hop {i + 1}</span>
-                      <span className="vlabel">{hop}</span>
-                    </li>
-                  ))}
-                  <li className="vnode sink">
-                    <span className="vrole">sink</span>
-                    <span className="vlabel">{activePath.target_component}</span>
-                  </li>
+                  {activePath.proof_chain.map((step, i) => {
+                    const isEntry = i === 0;
+                    const isSink = i === activePath.proof_chain.length - 1;
+                    const role = isEntry ? "entry" : isSink ? "advisory" : `hop ${i}`;
+                    const cls = isEntry ? "entry" : isSink ? "sink" : "hop";
+                    return (
+                      <li key={i} className={`vnode ${cls}`}>
+                        <span className="vrole">{role}</span>
+                        <span className="vlabel">{step}</span>
+                      </li>
+                    );
+                  })}
                 </ol>
               </div>
             )}
@@ -335,9 +357,16 @@ export default function StrazhApp() {
         .path-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
         .path-tab{background:#0a0a16;border:1px solid #1c1c33;color:#9f9fe0;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
         .path-tab.active{background:#4f46e5;border-color:#6366f1;color:#fff}
+        .path-tab.sev-critical{border-left:3px solid #ff5277}
+        .path-tab.sev-high{border-left:3px solid #ff8c4a}
+        .path-tab.sev-medium{border-left:3px solid #e0b54a}
+        .path-tab.sev-low{border-left:3px solid #4ac87a}
+        .path-tab.sev-unknown{border-left:3px solid #555}
 
-        .chain-vuln{margin-bottom:12px}
+        .chain-vuln{margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .vuln-badge{background:#5c1f28;color:#ffb3bd;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;letter-spacing:.3px}
+        .eco-tag{font-size:11px;color:#9fd0ff;background:#15152e;border:1px solid #24244d;border-radius:12px;padding:2px 9px}
+        .vuln-summary{margin:0 0 12px;font-size:12.5px;color:#c9c9e8;line-height:1.5}
 
         /* Vertical attack chain */
         .vchain{list-style:none;margin:0;padding:0;position:relative}
@@ -357,9 +386,11 @@ export default function StrazhApp() {
         .fix-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
         .fix-header .panel-title{margin:0}
         .risk-chip{font-size:11px;font-weight:700;letter-spacing:.5px;border-radius:12px;padding:3px 10px}
+        .risk-critical{background:#4a1020;color:#ff8fae}
         .risk-high{background:#5c1f28;color:#ffb3bd}
         .risk-medium{background:#5c4a1f;color:#ffe0a3}
         .risk-low{background:#1f5c3a;color:#a3ffc8}
+        .risk-unknown{background:#2a2a4a;color:#b8b8d8}
 
         .fix-card{margin-top:14px;background:#0a0a16;border:1px solid #1c1c33;border-radius:10px;overflow:hidden}
         .fix-model{font-size:11px;color:#8c8ca8;padding:8px 12px;border-bottom:1px solid #1c1c33;background:#0e0e1a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}

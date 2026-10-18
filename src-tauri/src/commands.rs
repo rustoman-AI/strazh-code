@@ -726,3 +726,159 @@ pub async fn generate_nemotron_fix(
 
     Ok(NemotronFix { model, fix_markdown })
 }
+
+// ══════════════════════════════════════════════════════
+//  OSV-backed scan — real vulnerability source
+// ══════════════════════════════════════════════════════
+//
+//  Attack paths here are grounded entirely in the scanned repository:
+//   - entry files come from the real AST scan (scan_ast / scan_code_graph)
+//   - dependencies come from the repo's own manifests (Cargo.toml,
+//     package.json, requirements.txt, pyproject.toml, ...)
+//   - a path is emitted ONLY when OSV returns a real advisory for that
+//     package at the exact declared version.
+//  No sample SBOM. No hardcoded CVE.
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct OsvPath {
+    pub entry_point: String,
+    pub target_component: String,   // "name@version"
+    pub vulnerability_id: String,   // OSV / CVE / GHSA id
+    pub severity: String,
+    pub ecosystem: String,
+    pub summary: Option<String>,
+    pub proof_chain: Vec<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct OsvScanResult {
+    pub exploitation_paths: Vec<OsvPath>,
+    pub stats: OsvScanStats,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct OsvScanStats {
+    pub dependencies_declared: usize,
+    pub dependencies_queried: usize,  // had a concrete version + known ecosystem
+    pub vulnerable_dependencies: usize,
+    pub entry_points: usize,
+    pub advisories_found: usize,
+}
+
+#[tauri::command]
+pub async fn scan_with_osv(root_dir: String) -> Result<OsvScanResult, String> {
+    // 1. Real AST scan of the repo (same code path as scan_code_graph).
+    let ast = crate::supply_chain::scan_ast(&root_dir);
+
+    // Entry files actually found in this repo.
+    let entry_files: Vec<String> = ast
+        .source_nodes
+        .iter()
+        .filter(|n| n.is_entry)
+        .map(|n| n.path.clone())
+        .collect();
+
+    // 2. Collect declared deps from the repo's own manifests, tagged with the
+    //    manifest's ecosystem. Dedupe identical (ecosystem,name,version) tuples
+    //    that appear across multiple manifests so we query OSV once each.
+    struct Dep {
+        name: String,
+        version: String,
+        ecosystem: &'static str,
+    }
+    let mut deps: Vec<Dep> = Vec::new();
+    let mut declared = 0usize;
+    let mut seen: std::collections::HashSet<(String, String, &'static str)> =
+        std::collections::HashSet::new();
+    for bf in &ast.build_files {
+        let eco = match crate::osv_client::ecosystem_for(&bf.build_system) {
+            Some(e) => e,
+            None => continue,
+        };
+        for d in &bf.declared_deps {
+            declared += 1;
+            if seen.insert((d.name.clone(), d.version.clone(), eco)) {
+                deps.push(Dep {
+                    name: d.name.clone(),
+                    version: d.version.clone(),
+                    ecosystem: eco,
+                });
+            }
+        }
+    }
+
+    // 3. Query OSV for each dep that has a concrete version.
+    let client = crate::osv_client::OsvClient::new().map_err(|e| e.to_string())?;
+    let mut paths: Vec<OsvPath> = Vec::new();
+    let mut queried = 0usize;
+    let mut advisories_found = 0usize;
+    let mut vulnerable_deps = 0usize;
+
+    for dep in &deps {
+        let version = match crate::osv_client::concrete_version(&dep.version) {
+            Some(v) => v,
+            None => continue, // no concrete version -> we don't guess
+        };
+        queried += 1;
+
+        let advisories = match client.query(&dep.name, &version, dep.ecosystem).await {
+            Ok(a) => a,
+            Err(_) => continue, // network/transient error: skip, don't fabricate
+        };
+        if advisories.is_empty() {
+            continue;
+        }
+        vulnerable_deps += 1;
+        advisories_found += advisories.len();
+
+        let target = format!("{}@{}", dep.name, version);
+        // Entry point: a real entry file from the scan if any, else the manifest-level entry.
+        let entry = entry_files
+            .first()
+            .cloned()
+            .unwrap_or_else(|| format!("{} manifest", dep.ecosystem));
+
+        for adv in advisories {
+            let sev = adv.severity.clone().unwrap_or_else(|| "UNKNOWN".into());
+            let proof_chain = vec![
+                entry.clone(),
+                format!("depends on {}", dep.name),
+                target.clone(),
+                adv.id.clone(),
+            ];
+            paths.push(OsvPath {
+                entry_point: entry.clone(),
+                target_component: target.clone(),
+                vulnerability_id: adv.id,
+                severity: sev,
+                ecosystem: dep.ecosystem.to_string(),
+                summary: adv.summary,
+                proof_chain,
+            });
+        }
+    }
+
+    // Sort by severity (most severe first) so the demo surfaces the worst
+    // real advisory at the top. Ties keep OSV's order.
+    fn sev_rank(s: &str) -> u8 {
+        match s.to_uppercase().as_str() {
+            "CRITICAL" => 0,
+            "HIGH" => 1,
+            "MODERATE" | "MEDIUM" => 2,
+            "LOW" => 3,
+            _ => 4,
+        }
+    }
+    paths.sort_by_key(|p| sev_rank(&p.severity));
+
+    Ok(OsvScanResult {
+        exploitation_paths: paths,
+        stats: OsvScanStats {
+            dependencies_declared: declared,
+            dependencies_queried: queried,
+            vulnerable_dependencies: vulnerable_deps,
+            entry_points: entry_files.len(),
+            advisories_found,
+        },
+    })
+}

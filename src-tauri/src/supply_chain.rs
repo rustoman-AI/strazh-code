@@ -195,6 +195,99 @@ fn parse_package_json_deps(content: &str) -> Vec<DeclaredDep> {
     deps
 }
 
+/// Parse Python dependencies from requirements.txt / pyproject.toml / setup.py.
+/// Only pinned (==) versions yield a usable version for OSV; others keep the
+/// raw spec and the OSV layer decides whether a concrete version is present.
+fn parse_python_deps(path: &str, content: &str) -> Vec<DeclaredDep> {
+    let fname = Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let mut deps = Vec::new();
+
+    if fname == "requirements.txt" {
+        for line in content.lines() {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with('#') || t.starts_with('-') { continue; }
+            // Strip environment markers / extras: "pkg[extra]==1.2.3 ; python_version>=3"
+            let core = t.split(';').next().unwrap_or(t).trim();
+            // Split on the first version operator.
+            let mut name = core.to_string();
+            let mut version = String::new();
+            for op in ["==", ">=", "<=", "~=", "!=", ">", "<", "="] {
+                if let Some(idx) = core.find(op) {
+                    name = core[..idx].trim().to_string();
+                    version = core[idx + op.len()..].trim().to_string();
+                    break;
+                }
+            }
+            // Drop extras in the name: pkg[extra] -> pkg
+            if let Some(b) = name.find('[') { name.truncate(b); }
+            let name = name.trim().to_string();
+            if name.is_empty() { continue; }
+            deps.push(DeclaredDep {
+                name,
+                version: if version.is_empty() { "*".into() } else { version },
+                dep_type: "runtime".into(),
+                source: "registry".into(),
+            });
+        }
+    } else if fname == "pyproject.toml" {
+        // Capture [project].dependencies = ["pkg==1.2.3", ...] and
+        // [tool.poetry.dependencies] pkg = "1.2.3"
+        let mut in_deps_array = false;
+        let mut in_poetry = false;
+        for line in content.lines() {
+            let t = line.trim();
+            if t.starts_with('[') {
+                in_poetry = t.starts_with("[tool.poetry.dependencies");
+                in_deps_array = false;
+                continue;
+            }
+            if t.starts_with("dependencies") && t.contains('[') {
+                in_deps_array = true;
+                // fallthrough to parse same-line entries below
+            }
+            if in_deps_array {
+                for tok in t.split(|c| c == '"' || c == '\'') {
+                    let s = tok.trim();
+                    if s.is_empty() || s == "," || s == "[" || s == "]" || s.starts_with("dependencies") { continue; }
+                    if let Some(d) = parse_py_spec(s) { deps.push(d); }
+                }
+                if t.contains(']') { in_deps_array = false; }
+            } else if in_poetry && t.contains('=') && !t.starts_with('#') {
+                let parts: Vec<&str> = t.splitn(2, '=').collect();
+                if parts.len() == 2 {
+                    let name = parts[0].trim().to_string();
+                    let ver = parts[1].trim().trim_matches('"').trim_matches('\'').to_string();
+                    if name != "python" && !name.is_empty() {
+                        deps.push(DeclaredDep { name, version: ver, dep_type: "runtime".into(), source: "registry".into() });
+                    }
+                }
+            }
+        }
+    }
+    deps
+}
+
+fn parse_py_spec(spec: &str) -> Option<DeclaredDep> {
+    let mut name = spec.to_string();
+    let mut version = String::new();
+    for op in ["==", ">=", "<=", "~=", "!=", ">", "<"] {
+        if let Some(idx) = spec.find(op) {
+            name = spec[..idx].trim().to_string();
+            version = spec[idx + op.len()..].trim().to_string();
+            break;
+        }
+    }
+    if let Some(b) = name.find('[') { name.truncate(b); }
+    let name = name.trim().to_string();
+    if name.is_empty() { return None; }
+    Some(DeclaredDep {
+        name,
+        version: if version.is_empty() { "*".into() } else { version },
+        dep_type: "runtime".into(),
+        source: "registry".into(),
+    })
+}
+
 pub fn scan_ast(root_dir: &str) -> AstGraph {
     let root = Path::new(root_dir);
     let mut source_nodes = Vec::new();
@@ -213,6 +306,7 @@ pub fn scan_ast(root_dir: &str) -> AstGraph {
                 let declared_deps = match bs {
                     "cargo" => parse_cargo_deps(&content),
                     "npm" => parse_package_json_deps(&content),
+                    "python" => parse_python_deps(&rel, &content),
                     _ => Vec::new(),
                 };
                 build_files.push(BuildFile { path: rel.clone(), build_system: bs.into(), declared_deps });

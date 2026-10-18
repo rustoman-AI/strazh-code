@@ -21,6 +21,7 @@ mod trust_exec;
 mod trust_graph;
 mod unified_graph;
 mod query_engine;
+pub mod osv_client;
 pub mod nebius_client;
 mod nova_shield;
 pub mod patch_generator;
@@ -400,6 +401,7 @@ pub fn run() {
             commands::compute_attack_paths,
             commands::execute_secql_query,
             commands::get_attack_paths,
+            commands::scan_with_osv,
             scan_real_cves,
             generate_sbom,
             chat_with_strazh,
