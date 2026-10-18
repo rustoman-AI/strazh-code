@@ -1,0 +1,14 @@
+/* Custom Edge Keyframes for SecQL Glowing Attack Paths */
+.animated-glowing-edge path {
+    stroke-dasharray: 10, 10;
+    animation: flow 1s linear infinite;
+}
+
+@keyframes flow {
+    from {
+        stroke-dashoffset: 20;
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}

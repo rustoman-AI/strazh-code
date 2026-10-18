@@ -1,0 +1,50 @@
+[package]
+name = "cyclonedx-tauri-ui"
+version = "0.1.0"
+description = "Strazh — supply-chain attack-path scanner with fixes written by NVIDIA Nemotron on Nebius Token Factory"
+authors = ["Strazh contributors"]
+edition = "2021"
+default-run = "cyclonedx-tauri-ui"
+
+[lib]
+name = "cyclonedx_tauri_ui_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs", "process", "io-util", "sync", "full"] }
+thiserror = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+petgraph = "0.6"
+sha2 = "0.10"
+hex = "0.4"
+zip = "2"
+reqwest = { version = "0.12", features = ["json"] }
+serde_yaml = "0.9"
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+crepe = "0.1"
+nom = "7.1"
+anyhow = "1.0.102"
+dotenvy = "0.15.7"
+notify = "8.2.0"
+git2 = "0.20.4"
+aho-corasick = "1.1.4"
+wasmtime = "42.0.1"
+wasmtime-wasi = "42.0.1"
+async-trait = "0.1.89"
+parking_lot = "0.12.5"
+shellexpand = "3.1.2"
+rand = "0.10.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
