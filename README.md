@@ -298,8 +298,28 @@ This section describes current behavior and is not a privacy guarantee.
 
 ## Release
 
-Strazh is built locally; there is no hosted release in this repository. Build
-the Windows artifacts with `npm run tauri build`. They are written to:
+**Latest release: [v0.1.0 (Windows)](https://github.com/rustoman-AI/strazh-code/releases/tag/v0.1.0)**
+
+Download the Windows installer from the release page:
+
+| Artifact | Download | SHA-256 |
+|---|---|---|
+| MSI | [`Strazh_0.1.0_x64_en-US.msi`](https://github.com/rustoman-AI/strazh-code/releases/download/v0.1.0/Strazh_0.1.0_x64_en-US.msi) | `2BFA8B297439FC4C411FA4AB798E707B3AEAC98123691FF166A10E1C0414CB84` |
+| NSIS setup | [`Strazh_0.1.0_x64-setup.exe`](https://github.com/rustoman-AI/strazh-code/releases/download/v0.1.0/Strazh_0.1.0_x64-setup.exe) | `0A36F5F6209F6031159F715688B38FB627D36F977AB7291109E6A60FBC590319` |
+
+Verify a download before running it:
+
+```powershell
+Get-FileHash .\Strazh_0.1.0_x64_en-US.msi -Algorithm SHA256
+```
+
+### Building locally instead
+
+```bash
+npm run tauri build
+```
+
+The artifacts are written to:
 
 ```
 src-tauri/target/release/bundle/msi/Strazh_0.1.0_x64_en-US.msi
@@ -307,19 +327,8 @@ src-tauri/target/release/bundle/nsis/Strazh_0.1.0_x64-setup.exe
 src-tauri/target/release/cyclonedx-tauri-ui.exe
 ```
 
-SHA-256 of the installers from the most recent local build on this machine
-(recompute after your own build — hashes change per build):
-
-| Artifact | SHA-256 |
-|---|---|
-| `Strazh_0.1.0_x64_en-US.msi` | `29BFEBE9B84A1CF87B61A09B85F9D53155727F626BFBC02F5479E96616C5FC09` |
-| `Strazh_0.1.0_x64-setup.exe` | `4873AB7B8F3A297C390A3BE92A873B13152D96A9A8E6305614EE0139B2213798` |
-
-Recompute with:
-
-```powershell
-Get-FileHash .\src-tauri\target\release\bundle\msi\Strazh_0.1.0_x64_en-US.msi -Algorithm SHA256
-```
+A local build's hashes will differ from the published ones above (Tauri bundles
+are not byte-for-byte reproducible); recompute from your own build if needed.
 
 The installers and executable contain no API keys or `.env` contents; the
 credential lives only in your per-user config file described above.
