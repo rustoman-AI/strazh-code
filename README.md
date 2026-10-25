@@ -371,19 +371,19 @@ This section describes current behavior and is not a privacy guarantee.
 
 ## Release
 
-**Latest release: [v0.1.0 (Windows)](https://github.com/rustoman-AI/strazh-code/releases/tag/v0.1.0)**
+**Latest release: [v1.0.0-hackathon (Windows)](https://github.com/rustoman-AI/strazh-code/releases/tag/v1.0.0-hackathon)**
 
 Download the Windows installer from the release page:
 
 | Artifact | Download | SHA-256 |
 |---|---|---|
-| MSI | [`Strazh_0.1.0_x64_en-US.msi`](https://github.com/rustoman-AI/strazh-code/releases/download/v0.1.0/Strazh_0.1.0_x64_en-US.msi) | `2BFA8B297439FC4C411FA4AB798E707B3AEAC98123691FF166A10E1C0414CB84` |
-| NSIS setup | [`Strazh_0.1.0_x64-setup.exe`](https://github.com/rustoman-AI/strazh-code/releases/download/v0.1.0/Strazh_0.1.0_x64-setup.exe) | `0A36F5F6209F6031159F715688B38FB627D36F977AB7291109E6A60FBC590319` |
+| MSI | [`Strazh_1.0.0_x64_en-US.msi`](https://github.com/rustoman-AI/strazh-code/releases/download/v1.0.0-hackathon/Strazh_1.0.0_x64_en-US.msi) | `4F037201186FAB09295CC3D5A6B9661A5E9D117AC6E63F67786024E775BD38E6` |
+| NSIS setup | [`Strazh_1.0.0_x64-setup.exe`](https://github.com/rustoman-AI/strazh-code/releases/download/v1.0.0-hackathon/Strazh_1.0.0_x64-setup.exe) | `E32B68657E9DD033991C49B071A2A2A8B8A482E016473632E318BD5906E42530` |
 
 Verify a download before running it:
 
 ```powershell
-Get-FileHash .\Strazh_0.1.0_x64_en-US.msi -Algorithm SHA256
+Get-FileHash .\Strazh_1.0.0_x64_en-US.msi -Algorithm SHA256
 ```
 
 ### Building locally instead
@@ -395,8 +395,8 @@ npm run tauri build
 The artifacts are written to:
 
 ```
-src-tauri/target/release/bundle/msi/Strazh_0.1.0_x64_en-US.msi
-src-tauri/target/release/bundle/nsis/Strazh_0.1.0_x64-setup.exe
+src-tauri/target/release/bundle/msi/Strazh_1.0.0_x64_en-US.msi
+src-tauri/target/release/bundle/nsis/Strazh_1.0.0_x64-setup.exe
 src-tauri/target/release/cyclonedx-tauri-ui.exe
 ```
 
