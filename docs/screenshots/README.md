@@ -19,7 +19,7 @@ credential.
 |---|---|
 | `welcome.png` | Welcome / repository-selection screen. |
 | `scan-findings.png` | Completed scan: severity summary + selected `agno@1.7.2` finding. |
-| `ai-remediation.png` | Live AI remediation guidance for the selected advisory. |
+| `ai-remediation.png` | Live AI remediation guidance for the selected advisory. Captured before the local **Apply fix / Undo** controls were added; see the top-level README's "Apply fix" section for current behavior. |
 
 ## Redaction
 

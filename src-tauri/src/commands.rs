@@ -703,9 +703,10 @@ pub struct NemotronFix {
 pub async fn generate_nemotron_fix(
     vuln_id: String,
     advisory_summary: Option<String>,
-    entry_point: String,
     target_component: String,
-    proof_chain: Vec<String>,
+    ecosystem: String,
+    manifest: String,
+    fixed_version: Option<String>,
     source_excerpt: Option<String>,
 ) -> Result<NemotronFix, String> {
     let client = NebiusClient::new()
@@ -714,15 +715,18 @@ pub async fn generate_nemotron_fix(
 
     let model = client.model().to_string();
 
+    let evidence = crate::nebius_client::FixEvidence {
+        vuln_id: &vuln_id,
+        advisory_summary: advisory_summary.as_deref().unwrap_or(""),
+        target_component: &target_component,
+        ecosystem: &ecosystem,
+        manifest: &manifest,
+        fixed_version: fixed_version.as_deref(),
+        source_excerpt: source_excerpt.as_deref().unwrap_or(""),
+    };
+
     let fix_markdown = client
-        .generate_fix(
-            &vuln_id,
-            advisory_summary.as_deref().unwrap_or(""),
-            &entry_point,
-            &target_component,
-            &proof_chain,
-            source_excerpt.as_deref().unwrap_or(""),
-        )
+        .generate_fix(evidence)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -743,12 +747,14 @@ pub async fn generate_nemotron_fix(
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct OsvPath {
-    pub entry_point: String,
+    pub entry_point: String,        // the manifest that declares this dependency (evidence)
     pub target_component: String,   // "name@version"
     pub vulnerability_id: String,   // OSV / CVE / GHSA id
     pub severity: String,
     pub ecosystem: String,
     pub summary: Option<String>,
+    /// Verified fixed version from the OSV advisory, if any (basis for upgrade).
+    pub fixed_version: Option<String>,
     pub proof_chain: Vec<String>,
 }
 
@@ -787,6 +793,7 @@ pub async fn scan_with_osv(root_dir: String) -> Result<OsvScanResult, String> {
         name: String,
         version: String,
         ecosystem: &'static str,
+        manifest: String, // the manifest file that actually declares this dep (evidence)
     }
     let mut deps: Vec<Dep> = Vec::new();
     let mut declared = 0usize;
@@ -804,6 +811,7 @@ pub async fn scan_with_osv(root_dir: String) -> Result<OsvScanResult, String> {
                     name: d.name.clone(),
                     version: d.version.clone(),
                     ecosystem: eco,
+                    manifest: bf.path.clone(),
                 });
             }
         }
@@ -834,27 +842,27 @@ pub async fn scan_with_osv(root_dir: String) -> Result<OsvScanResult, String> {
         advisories_found += advisories.len();
 
         let target = format!("{}@{}", dep.name, version);
-        // Entry point: a real entry file from the scan if any, else the manifest-level entry.
-        let entry = entry_files
-            .first()
-            .cloned()
-            .unwrap_or_else(|| format!("{} manifest", dep.ecosystem));
+        // Evidence source = the manifest that actually declares this dependency.
+        // We do NOT claim a specific runtime entry file, because the OSV scan has
+        // no evidence linking a source file to this dependency.
+        let source = dep.manifest.clone();
 
         for adv in advisories {
             let sev = adv.severity.clone().unwrap_or_else(|| "UNKNOWN".into());
             let proof_chain = vec![
-                entry.clone(),
-                format!("depends on {}", dep.name),
+                source.clone(),
+                format!("declares {}", dep.name),
                 target.clone(),
                 adv.id.clone(),
             ];
             paths.push(OsvPath {
-                entry_point: entry.clone(),
+                entry_point: source.clone(),
                 target_component: target.clone(),
                 vulnerability_id: adv.id,
                 severity: sev,
                 ecosystem: dep.ecosystem.to_string(),
                 summary: adv.summary,
+                fixed_version: adv.fixed_version,
                 proof_chain,
             });
         }
@@ -883,4 +891,380 @@ pub async fn scan_with_osv(root_dir: String) -> Result<OsvScanResult, String> {
             advisories_found,
         },
     })
+}
+
+// ══════════════════════════════════════════════════════
+//  Apply a local manifest version fix (local files only)
+// ══════════════════════════════════════════════════════
+//
+//  Updates exactly one declared dependency's version in the manifest that
+//  declared it, in-place on disk. No network, no VCS, no remote PR. The change
+//  is conservative: it only rewrites the specific package's version token and
+//  refuses anything ambiguous. Path access is confined to the scanned repo.
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ApplyFixResult {
+    pub applied: bool,
+    pub manifest: String,       // repo-relative manifest path that was edited
+    pub package: String,
+    pub from_version: String,
+    pub to_version: String,
+    pub message: String,        // human-readable confirmation or reason
+    /// Exact manifest content BEFORE the edit, so the UI can offer Undo.
+    /// Empty when nothing was applied.
+    pub original_content: String,
+}
+
+#[tauri::command]
+pub fn apply_manifest_fix(
+    repo_root: String,
+    manifest_rel_path: String,
+    ecosystem: String,
+    package: String,
+    from_version: String,
+    to_version: String,
+) -> Result<ApplyFixResult, String> {
+    use std::path::{Path, Component};
+
+    let not_applicable = |msg: &str| ApplyFixResult {
+        applied: false,
+        manifest: manifest_rel_path.clone(),
+        package: package.clone(),
+        from_version: from_version.clone(),
+        to_version: to_version.clone(),
+        message: msg.to_string(),
+        original_content: String::new(),
+    };
+
+    // Basic validation.
+    if to_version.trim().is_empty() {
+        return Ok(not_applicable("No concrete target version to apply."));
+    }
+    if to_version.trim() == from_version.trim() {
+        return Ok(not_applicable("Declared version already matches the fix."));
+    }
+
+    // Resolve + contain the manifest path within the repo root (no traversal).
+    let root = std::fs::canonicalize(&repo_root)
+        .map_err(|e| format!("Cannot resolve repo root: {}", e))?;
+    // Reject absolute or parent-escaping relative paths.
+    let rel = Path::new(&manifest_rel_path);
+    if rel.is_absolute()
+        || rel.components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err("Unsafe manifest path.".into());
+    }
+    let full = root.join(rel);
+    let full_canon = std::fs::canonicalize(&full)
+        .map_err(|e| format!("Manifest not found: {}", e))?;
+    if !full_canon.starts_with(&root) {
+        return Err("Manifest path escapes the repository.".into());
+    }
+
+    let content = std::fs::read_to_string(&full_canon)
+        .map_err(|e| format!("Cannot read manifest: {}", e))?;
+
+    // Each updater returns (new_content, old_spec_shown) on a single safe match,
+    // or None when the edit is ambiguous/unsupported.
+    let updated = match ecosystem.as_str() {
+        "npm" => update_package_json(&content, &package, &to_version),
+        "crates.io" => update_cargo_toml(&content, &package, &to_version),
+        "PyPI" => update_python_manifest(
+            full_canon.file_name().and_then(|n| n.to_str()).unwrap_or(""),
+            &content, &package, &to_version,
+        ),
+        "Go" => update_go_mod(&content, &package, &to_version),
+        other => return Ok(not_applicable(&format!(
+            "Automatic apply is not supported for the {} ecosystem yet.", other
+        ))),
+    };
+
+    match updated {
+        Some((new_content, old_spec)) => {
+            std::fs::write(&full_canon, new_content)
+                .map_err(|e| format!("Cannot write manifest: {}", e))?;
+            let fname = full_canon.file_name().and_then(|n| n.to_str()).unwrap_or("manifest");
+            // Prefer the real old spec found in the file (e.g. ">=1.7.2") over
+            // the scanned concrete version, so the UI shows the true change.
+            let shown_from = if old_spec.trim().is_empty() { from_version.clone() } else { old_spec };
+            Ok(ApplyFixResult {
+                applied: true,
+                manifest: manifest_rel_path,
+                package: package.clone(),
+                from_version: shown_from.clone(),
+                to_version: to_version.clone(),
+                message: format!("Updated {}: {} {} → {}", fname, package, shown_from, to_version),
+                // `content` is the pre-edit text read above — exactly what Undo restores.
+                original_content: content.clone(),
+            })
+        }
+        None => Ok(not_applicable(
+            "Could not safely update this package's version in the manifest — it appears more \
+             than once, uses a complex/workspace form, or no fixed version was provided. Edit it \
+             manually.",
+        )),
+    }
+}
+
+/// package.json: update "<pkg>": "<spec>" to the exact fixed version, dropping
+/// any range operator (^, ~, >=, etc.). Only acts on a single occurrence.
+/// Returns (new_content, old_spec). Range specs are accepted, not just pins.
+fn update_package_json(content: &str, pkg: &str, to: &str) -> Option<(String, String)> {
+    let key = format!("\"{}\"", pkg);
+    let mut idx = 0;
+    let mut matches = 0usize;
+    let mut out = content.to_string();
+    let mut edit: Option<(usize, usize, String)> = None; // (start, end, old_val)
+    while let Some(found) = content[idx..].find(&key) {
+        let at = idx + found;
+        let rest = &content[at + key.len()..];
+        let rtrim = rest.trim_start_matches(|c: char| c == ' ' || c == '\t');
+        if let Some(after_colon) = rtrim.strip_prefix(':') {
+            let v = after_colon.trim_start_matches(|c: char| c == ' ' || c == '\t');
+            if let Some(vq) = v.strip_prefix('"') {
+                if let Some(end) = vq.find('"') {
+                    let val = &vq[..end];
+                    // Only treat it as a version spec if it looks like one
+                    // (digits present or a leading range operator). This avoids
+                    // matching unrelated string fields that happen to share a key.
+                    let looks_versiony = val.chars().any(|c| c.is_ascii_digit())
+                        || val.starts_with(['^', '~', '>', '<', '=']);
+                    if looks_versiony {
+                        let val_start = at + key.len() + (rest.len() - rtrim.len())
+                            + 1 /*colon*/ + (rtrim[1..].len() - v.len()) + 1 /*quote*/;
+                        let val_end = val_start + val.len();
+                        matches += 1;
+                        edit = Some((val_start, val_end, val.to_string()));
+                    }
+                }
+            }
+        }
+        idx = at + key.len();
+    }
+    if matches == 1 {
+        if let Some((s, e, old)) = edit {
+            // Drop the range operator: pin to the exact fixed version.
+            out.replace_range(s..e, to);
+            return Some((out, old));
+        }
+    }
+    None
+}
+
+/// Cargo.toml: update `pkg = "1.7"` / `pkg = "^1.7"` / `pkg = { version = "…" }`
+/// to the exact fixed version (operator dropped). Only when exactly one line
+/// matches. Returns (new_content, old_spec).
+fn update_cargo_toml(content: &str, pkg: &str, to: &str) -> Option<(String, String)> {
+    let mut result_lines: Vec<String> = Vec::new();
+    let mut hits = 0usize;
+    let mut old_spec = String::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let name_eq = format!("{} =", pkg);
+        let name_eq2 = format!("{}=", pkg);
+        if trimmed.starts_with(&name_eq) || trimmed.starts_with(&name_eq2) {
+            if let Some(q1) = line.find('"') {
+                if let Some(q2rel) = line[q1 + 1..].find('"') {
+                    let q2 = q1 + 1 + q2rel;
+                    let before = &line[..q1];
+                    // The first quoted string after `pkg =` is the version,
+                    // whether bare (`pkg = "1.7"`) or inside an inline table
+                    // (`pkg = { version = "1.7", ... }`).
+                    if before.contains('=') {
+                        old_spec = line[q1 + 1..q2].to_string();
+                        let mut nl = String::new();
+                        nl.push_str(&line[..q1 + 1]);
+                        nl.push_str(to); // exact fixed version, no operator
+                        nl.push_str(&line[q2..]);
+                        hits += 1;
+                        result_lines.push(nl);
+                        continue;
+                    }
+                }
+            }
+        }
+        result_lines.push(line.to_string());
+    }
+    if hits == 1 {
+        let mut s = result_lines.join("\n");
+        if content.ends_with('\n') { s.push('\n'); }
+        Some((s, old_spec))
+    } else {
+        None
+    }
+}
+
+/// Split a python requirement spec like "pkg[extra]>=1.7.2" into
+/// (name, extras_suffix, operator+version). Returns None if no name.
+fn split_py_req(spec: &str) -> Option<(String, String, String)> {
+    let s = spec.trim();
+    // find first version operator
+    let ops = ["===", "==", ">=", "<=", "~=", "!=", ">", "<"];
+    let mut op_idx = s.len();
+    for op in ops {
+        if let Some(i) = s.find(op) { if i < op_idx { op_idx = i; } }
+    }
+    let (head, verpart) = s.split_at(op_idx);
+    // head may include extras: name[extra]
+    let name_end = head.find('[').unwrap_or(head.len());
+    let name = head[..name_end].trim().to_string();
+    if name.is_empty() { return None; }
+    let extras = head[name_end..].trim().to_string(); // "" or "[extra]"
+    Some((name, extras, verpart.trim().to_string()))
+}
+
+/// requirements.txt / pyproject.toml: pin the package to the exact fixed
+/// version. Accepts pins (==), ranges (>=, ~=, etc.) and bare names; rewrites
+/// to `pkg==<fixed>` (requirements / PEP 621) or `pkg = "<fixed>"` (poetry),
+/// dropping the operator. Only acts on a single matching occurrence.
+/// Returns (new_content, old_spec).
+fn update_python_manifest(fname: &str, content: &str, pkg: &str, to: &str) -> Option<(String, String)> {
+    let pkg_lc = pkg.to_lowercase();
+
+    if fname == "requirements.txt" {
+        let mut hits = 0usize;
+        let mut old_spec = String::new();
+        let mut lines: Vec<String> = Vec::new();
+        for line in content.lines() {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with('#') || t.starts_with('-') {
+                lines.push(line.to_string());
+                continue;
+            }
+            let core = t.split(';').next().unwrap_or(t).trim();
+            if let Some((name, extras, ver)) = split_py_req(core) {
+                if name.to_lowercase() == pkg_lc {
+                    let marker = if let Some(m) = t.split_once(';') { format!(" ;{}", m.1) } else { String::new() };
+                    // old_spec: the version constraint only (or "unpinned" for a bare name),
+                    // so the UI message reads "<pkg> <old> → <new>" without duplicating the name.
+                    old_spec = if ver.is_empty() { "unpinned".to_string() } else { ver.clone() };
+                    lines.push(format!("{}{}=={}{}", name, extras, to, marker));
+                    hits += 1;
+                    continue;
+                }
+            }
+            lines.push(line.to_string());
+        }
+        if hits == 1 {
+            let mut s = lines.join("\n");
+            if content.ends_with('\n') { s.push('\n'); }
+            return Some((s, old_spec));
+        }
+        return None;
+    }
+
+    if fname == "pyproject.toml" {
+        let mut hits = 0usize;
+        let mut old_spec = String::new();
+        let mut lines: Vec<String> = Vec::new();
+        for line in content.lines() {
+            let t = line.trim();
+
+            // poetry form:  pkg = "spec"   (spec may be ^1.7, >=1.7, 1.7, ...)
+            let name_eq = format!("{} =", pkg);
+            if t.starts_with(&name_eq) && t.contains('"') {
+                if let Some(q1) = line.find('"') {
+                    if let Some(q2rel) = line[q1 + 1..].find('"') {
+                        let q2 = q1 + 1 + q2rel;
+                        old_spec = line[q1 + 1..q2].to_string();
+                        // exact version, operator dropped
+                        lines.push(format!("{}{}{}", &line[..q1 + 1], to, &line[q2..]));
+                        hits += 1;
+                        continue;
+                    }
+                }
+            }
+
+            // PEP 621 array entry: "pkg", "pkg==x", "pkg>=x", "pkg~=x" (quoted)
+            if t.contains('"') {
+                if let Some(q1) = line.find('"') {
+                    if let Some(q2rel) = line[q1 + 1..].find('"') {
+                        let q2 = q1 + 1 + q2rel;
+                        let inner = &line[q1 + 1..q2];
+                        if let Some((name, extras, ver)) = split_py_req(inner) {
+                            if name.to_lowercase() == pkg_lc {
+                                old_spec = if ver.is_empty() { "unpinned".to_string() } else { ver.clone() };
+                                let newinner = format!("{}{}=={}", name, extras, to);
+                                lines.push(format!("{}{}{}", &line[..q1 + 1], newinner, &line[q2..]));
+                                hits += 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            lines.push(line.to_string());
+        }
+        if hits == 1 {
+            let mut s = lines.join("\n");
+            if content.ends_with('\n') { s.push('\n'); }
+            return Some((s, old_spec));
+        }
+        return None;
+    }
+
+    None
+}
+
+/// go.mod: update `require ... pkg vX.Y.Z` (require block or single line).
+/// Returns (new_content, old_spec). Only acts on a single matching line.
+fn update_go_mod(content: &str, pkg: &str, to: &str) -> Option<(String, String)> {
+    // Go versions are prefixed with 'v'.
+    let target = if to.starts_with('v') { to.to_string() } else { format!("v{}", to) };
+    let mut hits = 0usize;
+    let mut old_spec = String::new();
+    let mut lines: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let toks: Vec<&str> = line.split_whitespace().collect();
+        if let Some(pos) = toks.iter().position(|t| *t == pkg) {
+            if pos + 1 < toks.len() && toks[pos + 1].starts_with('v') {
+                old_spec = toks[pos + 1].to_string();
+                let lead: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+                let mut new_toks = toks.clone();
+                new_toks[pos + 1] = &target;
+                lines.push(format!("{}{}", lead, new_toks.join(" ")));
+                hits += 1;
+                continue;
+            }
+        }
+        lines.push(line.to_string());
+    }
+    if hits == 1 {
+        let mut s = lines.join("\n");
+        if content.ends_with('\n') { s.push('\n'); }
+        Some((s, old_spec))
+    } else {
+        None
+    }
+}
+
+/// Undo a prior apply by restoring the exact original manifest content the
+/// frontend held in memory. Path access is confined to the scanned repo. No
+/// network, no VCS. Returns a short confirmation message.
+#[tauri::command]
+pub fn revert_manifest(
+    repo_root: String,
+    manifest_rel_path: String,
+    original_content: String,
+) -> Result<String, String> {
+    use std::path::{Path, Component};
+
+    let root = std::fs::canonicalize(&repo_root)
+        .map_err(|e| format!("Cannot resolve repo root: {}", e))?;
+    let rel = Path::new(&manifest_rel_path);
+    if rel.is_absolute()
+        || rel.components().any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err("Unsafe manifest path.".into());
+    }
+    let full = root.join(rel);
+    let full_canon = std::fs::canonicalize(&full)
+        .map_err(|e| format!("Manifest not found: {}", e))?;
+    if !full_canon.starts_with(&root) {
+        return Err("Manifest path escapes the repository.".into());
+    }
+    std::fs::write(&full_canon, original_content)
+        .map_err(|e| format!("Cannot restore manifest: {}", e))?;
+    let fname = full_canon.file_name().and_then(|n| n.to_str()).unwrap_or("manifest");
+    Ok(format!("Reverted {} to its previous contents.", fname))
 }

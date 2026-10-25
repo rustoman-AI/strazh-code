@@ -17,7 +17,9 @@ understand and remediate them. It:
   relationship and, when the advisory provides one, an **advisory-reported
   fixed version**;
 - generates **advisory-based remediation guidance** with an **NVIDIA Nemotron**
-  model served through **[Nebius Token Factory](https://nebius.com)**.
+  model served through **[Nebius Token Factory](https://nebius.com)**;
+- can optionally **apply a local version bump** to the declaring manifest when
+  the advisory provides a fixed version (with a one-click **Undo**).
 
 > **Scope of the analysis.** A finding means a declared dependency matches an
 > OSV advisory for the scanned version. This is a **declaration-based
@@ -26,9 +28,13 @@ understand and remediate them. It:
 > your application. Strazh does not perform reachability or exploitability
 > analysis.
 
-Strazh does **not** modify your repository, does **not** apply patches, and the
-AI guidance is **not** a verified or tested fix. "Advisory-reported fix"
-versions come from OSV, not from Strazh verifying your project.
+The AI guidance is **not** a verified or tested fix: "advisory-reported fix"
+versions come from OSV, not from Strazh verifying your project. Strazh never
+changes your repository on its own — **scanning and generating guidance write
+nothing to disk**. The only change Strazh can make is the explicit, local
+**Apply fix** action you trigger per finding, which edits one dependency
+version in a manifest on your machine (and can be undone). Nothing is ever sent
+to a remote host or opened as a pull request.
 
 ## Screenshots
 
@@ -44,9 +50,17 @@ are unaltered.
 
 ![Strazh scan results for the demo-cookbook repository: 913 OSV advisories with a severity summary (15 Critical, 178 High, 226 Medium, 69 Low, 425 Unknown), the agno@1.7.2 GHSA-77rh-m34w-rv36 Critical finding selected, its advisory-reported fix 2.3.24, and the manifest-to-package-to-advisory relationship](./docs/screenshots/scan-findings.png)
 
-**Generated AI remediation guidance**
+**Generated AI remediation guidance, with the local Apply fix**
 
-![Strazh AI remediation for the agno Eval Injection advisory: an Advisory section restating the issue and a Recommended remediation section advising an upgrade to version 2.3.24 with a note to test compatibility](./docs/screenshots/ai-remediation.png)
+![Strazh AI remediation for the agno Eval Injection advisory: an Advisory section restating the issue, a Recommended remediation section advising an upgrade to the advisory-reported fixed version, and an Apply fix button that rewrites the declaring manifest locally](./docs/screenshots/ai-remediation.png)
+
+In the demo recording, selecting the Critical `agno` finding and clicking
+**Apply fix** rewrites the pinned range in `pyproject.toml` and shows:
+`Updated pyproject.toml: agno >=1.5.1 → 2.3.24` with an **Undo**.
+
+> Note: the `ai-remediation.png` capture above shows the guidance panel before
+> the Apply fix / Undo controls were added. The Apply-fix behavior it now
+> includes is described under [Usage → Apply fix](#apply-fix-local-manifest-edit).
 
 ## Quick start (Windows)
 
@@ -130,6 +144,36 @@ Optional overrides (environment variable or the same `.env`):
    the dependency (evidence from the scan). This indicates declaration, not
    runtime reachability.
 6. **Generate guidance** — request AI remediation for the selected finding.
+7. **Apply fix (optional, local)** — when the advisory provides a fixed version,
+   an **Apply fix → `<version>`** button appears under the guidance. Clicking it
+   rewrites that one dependency's version in the declaring manifest on disk and
+   shows a confirmation such as
+   `Updated pyproject.toml: agno >=1.5.1 → 2.3.24`, with an **Undo** that
+   restores the original file content.
+
+### Apply fix (local manifest edit)
+
+The Apply fix action is deliberately conservative and local-only (it uses
+Tauri's file APIs — no network, no git, no pull request):
+
+- **What it rewrites.** A single dependency's version in the manifest that
+  declared it, set to the advisory's fixed version. It handles both pinned
+  versions and simple ranges, dropping the range operator:
+  - `requirements.txt` / `pyproject.toml`: `agno>=1.5.1`, `agno~=1.5`, or bare
+    `agno` → `agno==2.3.24`
+  - `package.json`: `"^1.7.2"` / `"~1.7.2"` → `"2.3.24"`
+  - `Cargo.toml`: `"^1.7"` → `"2.3.24"`
+  - `go.mod`: `pkg vX.Y.Z` → the fixed version
+- **What it refuses.** If the package appears more than once, uses a
+  workspace/complex form, or no fixed version is available, Strazh does **not**
+  edit the file and shows a clear message (e.g. *"Could not safely update this
+  package's version… it appears more than once, uses a complex/workspace form,
+  or no fixed version was provided. Edit it manually."*).
+- **Undo.** Strazh keeps the original file content in memory for the current
+  session and restores it exactly when you click **Undo**.
+- **Scope.** It only writes within the scanned repository folder, and only the
+  one version token changes — the rest of the manifest (formatting, other
+  entries) is preserved.
 
 Notes on interpreting results:
 
@@ -234,8 +278,11 @@ Based on the current code:
   present). Dependency **source code is not fetched or sent** — the remediation
   prompt explicitly states source is unavailable, so guidance is advisory-based
   rather than a source-level patch.
-- **Repository files are not modified.** Generating guidance never writes to
-  your project; there is no auto-patching.
+- **Repository files are only modified by the explicit Apply fix action.**
+  Scanning and generating guidance never write to your project. The optional
+  **Apply fix** button (which you click per finding) rewrites exactly one
+  dependency version in the declaring manifest, locally; **Undo** restores it.
+  There is no automatic patching and no remote/VCS action.
 
 Analysis limitations:
 

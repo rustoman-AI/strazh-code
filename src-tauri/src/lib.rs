@@ -145,9 +145,61 @@ async fn send_notification(app_handle: tauri::AppHandle, title: String, body: St
     Ok(())
 }
 
+/// The application identifier, kept in sync with tauri.conf.json. Used to
+/// locate the per-user configuration directory.
+const APP_IDENTIFIER: &str = "com.strazh.app";
+
+/// Resolve the single documented per-user config file for credentials:
+///   Windows: %APPDATA%\com.strazh.app\.env
+///   macOS:   ~/Library/Application Support/com.strazh.app/.env
+///   Linux:   $XDG_CONFIG_HOME/com.strazh.app/.env (or ~/.config/...)
+/// This matches Tauri's per-app config directory for `APP_IDENTIFIER`.
+/// Pure/testable: derives the path from the provided environment only.
+pub fn config_env_path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<std::path::PathBuf> {
+    let base: std::path::PathBuf = if cfg!(windows) {
+        get("APPDATA").map(std::path::PathBuf::from)?
+    } else if cfg!(target_os = "macos") {
+        let home = get("HOME")?;
+        std::path::Path::new(&home).join("Library").join("Application Support")
+    } else {
+        match get("XDG_CONFIG_HOME") {
+            Some(x) if !x.is_empty() => std::path::PathBuf::from(x),
+            _ => std::path::Path::new(&get("HOME")?).join(".config"),
+        }
+    };
+    Some(base.join(APP_IDENTIFIER).join(".env"))
+}
+
+/// Load credentials into the process environment with a narrow, documented
+/// scope. Precedence and rules:
+///   - A variable already set in the real environment ALWAYS wins
+///     (`dotenvy::from_path` never overrides an existing var).
+///   - Packaged (and dev) builds load exactly ONE documented file:
+///     the per-user config dir `.env` (see `config_env_path_from`).
+///   - DEV builds additionally load a `.env` from the current working
+///     directory — scoped to development only via `debug_assertions`.
+///   - No ancestor-directory walk, no sibling `src-tauri/.env` probing.
+/// The key is never printed, copied into source, or bundled.
+fn load_local_env() {
+    // Dev-only convenience: load ./.env from the working directory.
+    // `debug_assertions` is off in `--release`, so this never runs in the
+    // packaged app.
+    #[cfg(debug_assertions)]
+    {
+        let _ = dotenvy::dotenv(); // cwd .env; does not override set vars
+    }
+
+    // All builds: the single documented per-user config file.
+    if let Some(path) = config_env_path_from(&|k| std::env::var(k).ok()) {
+        if path.is_file() {
+            let _ = dotenvy::from_path(&path); // does not override set vars
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    dotenvy::dotenv().ok(); // Load environment variables from .env
+    load_local_env(); // Load NEBIUS_API_KEY etc. from a local .env if present.
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -402,6 +454,8 @@ pub fn run() {
             commands::execute_secql_query,
             commands::get_attack_paths,
             commands::scan_with_osv,
+            commands::apply_manifest_fix,
+            commands::revert_manifest,
             scan_real_cves,
             generate_sbom,
             chat_with_strazh,

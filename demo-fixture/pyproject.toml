@@ -1,0 +1,9 @@
+[project]
+name = "strazh-demo-fixture"
+version = "0.0.0"
+description = "Minimal manifest for demoing Strazh's Apply-fix button. Not a real project."
+requires-python = ">=3.10"
+dependencies = [
+  "agno==1.7.2",
+  "pillow==9.0.0",
+]

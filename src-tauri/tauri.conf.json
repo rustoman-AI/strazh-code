@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Strazh — Supply-chain attack paths, fixed by Nemotron",
+        "title": "Strazh — Repository Security Scanner",
         "width": 1100,
         "height": 800,
         "resizable": true,

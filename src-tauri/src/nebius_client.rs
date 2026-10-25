@@ -204,55 +204,98 @@ impl NebiusClient {
         })
     }
 
-    /// Generate a concrete fix for a detected attack path.
+    /// Generate advisory-grounded remediation guidance for a finding.
     ///
-    /// Returns the raw Nemotron text (expected to contain a code fix plus a
-    /// short explanation). Parsing is left to the caller.
-    pub async fn generate_fix(
-        &self,
-        vuln_id: &str,
-        advisory_summary: &str,
-        entry_point: &str,
-        target_component: &str,
-        proof_chain: &[String],
-        source_excerpt: &str,
-    ) -> Result<String> {
-        let system_prompt = "You are a senior application-security engineer. Given a concrete \
-            attack path discovered by a supply-chain scanner, write a minimal, correct fix. \
-            Ground your root cause in the provided advisory summary; do not speculate beyond it. \
-            Respond in Markdown with two sections: '## Root cause' (2-3 sentences) and \
-            '## Fix' (a fenced code block containing only the patched code). Keep it concise.";
+    /// The prompt strictly separates three kinds of information and forbids the
+    /// model from inventing repository internals it was not given:
+    ///   - Repository evidence (manifest path, declared component)
+    ///   - Advisory information (id, summary, verified fixed version)
+    ///   - AI inference (clearly labelled, illustrative)
+    ///
+    /// Returns the raw Markdown. Parsing is left to the caller.
+    pub async fn generate_fix(&self, ev: FixEvidence<'_>) -> Result<String> {
+        let has_source = !ev.source_excerpt.trim().is_empty();
 
-        let chain = if proof_chain.is_empty() {
-            "(no intermediate hops reported)".to_string()
-        } else {
-            proof_chain.join("  ->  ")
+        let system_prompt = "You are a senior application-security engineer helping triage a \
+            dependency advisory reported by a supply-chain scanner (OSV). You are given only the \
+            evidence below. Follow these rules exactly:\n\
+            1. Use ONLY the supplied evidence. If a fact (vulnerable function, file path, line, \
+               call site, or patch) is not in the evidence, do NOT state it. Never invent \
+               repository internals or source locations.\n\
+            2. If no dependency source code is supplied, do NOT produce a repository patch. Give \
+               advisory-based remediation guidance instead, and clearly label any code as an \
+               ILLUSTRATIVE example, not a change to this repository.\n\
+            3. If a verified fixed version is supplied, lead with upgrading to it. If none is \
+               supplied, state that the advisory does not provide a fixed version and recommend \
+               consulting the advisory / maintainers.\n\
+            4. Do NOT claim the suggestion is tested, verified, or that it resolves the advisory. \
+               Recommend testing after any change.\n\
+            Respond in Markdown with these sections, in order:\n\
+            '## Advisory' — 1-2 sentences restating only what the advisory says.\n\
+            '## Recommended remediation' — the upgrade (if a fixed version exists) or advisory-based \
+            guidance.\n\
+            '## Illustrative example (not a repository patch)' — include this section ONLY when you \
+            can give a genuinely useful, generic example that is supported by the evidence. If you \
+            have no such example, DO NOT output this heading at all — omit the entire section. \
+            Never emit an empty heading, a placeholder, or the word 'Omitted'.\n\
+            Keep it concise.";
+
+        let fixed_line = match ev.fixed_version {
+            Some(v) if !v.trim().is_empty() =>
+                format!("Verified fixed version (from advisory): {}", v.trim()),
+            _ => "Verified fixed version: NOT PROVIDED by the advisory.".to_string(),
         };
 
-        let advisory = if advisory_summary.trim().is_empty() {
+        let advisory = if ev.advisory_summary.trim().is_empty() {
             "(no advisory summary provided)".to_string()
         } else {
-            advisory_summary.trim().to_string()
+            ev.advisory_summary.trim().to_string()
+        };
+
+        let source_block = if has_source {
+            format!("Dependency source code (supplied):\n{}", ev.source_excerpt)
+        } else {
+            "Dependency source code: NOT AVAILABLE. Do not reference specific functions, files, or \
+             lines of the dependency; do not produce a repository patch."
+                .to_string()
         };
 
         let user_prompt = format!(
-            "Vulnerability: {vuln}\nAdvisory summary: {advisory}\nEntry point: {entry}\nTarget \
-             component: {target}\nAttack path: {chain}\n\nRelevant source context:\n{src}\n\nWrite \
-             the fix.",
-            vuln = vuln_id,
+            "== Repository evidence ==\n\
+             Declared component: {component}\n\
+             Ecosystem: {eco}\n\
+             Declared in manifest: {manifest}\n\n\
+             == Advisory information ==\n\
+             Advisory id: {vuln}\n\
+             Advisory summary: {advisory}\n\
+             {fixed_line}\n\n\
+             == Dependency source ==\n\
+             {source_block}\n\n\
+             Produce the remediation per the rules.",
+            component = ev.target_component,
+            eco = ev.ecosystem,
+            manifest = ev.manifest,
+            vuln = ev.vuln_id,
             advisory = advisory,
-            entry = entry_point,
-            target = target_component,
-            chain = chain,
-            src = if source_excerpt.is_empty() {
-                "(source not available; reason from the advisory summary, attack path and component)"
-            } else {
-                source_excerpt
-            },
+            fixed_line = fixed_line,
+            source_block = source_block,
         );
 
         self.complete(system_prompt, &user_prompt).await
     }
+}
+
+/// Evidence passed to `generate_fix`. Borrowed to avoid copies.
+pub struct FixEvidence<'a> {
+    pub vuln_id: &'a str,
+    pub advisory_summary: &'a str,
+    pub target_component: &'a str,
+    pub ecosystem: &'a str,
+    pub manifest: &'a str,
+    /// Verified fixed version from the advisory, if any.
+    pub fixed_version: Option<&'a str>,
+    /// Dependency source, if actually available (currently never — see UI note).
+    pub source_excerpt: &'a str,
 }
 
 fn extract_risk(text: &str) -> String {
