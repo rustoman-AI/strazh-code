@@ -36,6 +36,65 @@ nothing to disk**. The only change Strazh can make is the explicit, local
 version in a manifest on your machine (and can be undone). Nothing is ever sent
 to a remote host or opened as a pull request.
 
+## Demo video
+
+[Watch the 3-minute demo on YouTube](https://www.youtube.com/watch?v=CFnPRriDur4)
+
+The recording scans
+[`github.com/nebius/token-factory-cookbook`](https://github.com/nebius/token-factory-cookbook)
+end to end: pick the repo → run the scan (547 declared dependencies, 1,078 OSV
+findings, 31 Critical) → select the Critical `agno@1.5.1` Eval Injection
+advisory → generate Nemotron remediation grounded in the advisory → click
+**Apply fix** to pin `agno` to the advisory's fixed version `2.3.24` in
+`pyproject.toml`, with an **Undo**.
+
+## How it works
+
+Strazh runs the full find → understand → suggest → apply loop locally:
+
+1. **Parse manifests.** It walks the selected repository and reads the
+   dependencies declared in its manifests (`Cargo.toml`, `package.json`,
+   `requirements.txt`, `pyproject.toml`, `go.mod`), de-duplicating to the unique
+   `(name, version, ecosystem)` tuples it can resolve to a concrete version.
+2. **Query OSV live.** For each resolvable dependency it queries the
+   **[OSV](https://osv.dev)** API (`https://api.osv.dev/v1/query`) for known
+   advisories matching that package and version, and extracts the advisory
+   severity and — when provided — the advisory-reported fixed version
+   (ecosystem-aware version comparison, never lexical).
+3. **Build the attack-path relationship.** For a selected finding it shows the
+   **manifest → package → advisory** relationship: which file declares the
+   vulnerable dependency, the package itself, and the OSV advisory it matched.
+   This is a declaration-based relationship, not a runtime-reachability proof.
+4. **Ground remediation with Nemotron.** On demand it asks an **NVIDIA
+   Nemotron** model on **[Nebius Token Factory](https://nebius.com)** for
+   remediation guidance, passing only advisory metadata (see
+   [How Nemotron & Nebius Token Factory are used](#how-nemotron--nebius-token-factory-are-used)).
+5. **Apply locally, with Undo.** When the advisory has a fixed version, you can
+   apply a single, local version bump to the declaring manifest and revert it
+   with one click. Nothing is pushed, committed, or opened as a PR.
+
+## How Nemotron & Nebius Token Factory are used
+
+Strazh uses an **NVIDIA Nemotron** model served through **Nebius Token
+Factory** for the remediation-guidance step only. Specifics, from
+`src-tauri/src/nebius_client.rs`:
+
+- **Model.** Default `nvidia/Nemotron-3_5-Lightning`, overridable with the
+  `NEBIUS_MODEL` environment variable (or the local `.env`).
+- **Endpoint.** The OpenAI-compatible Token Factory endpoint
+  `https://api.tokenfactory.nebius.com/v1`, overridable with `NEBIUS_BASE_URL`.
+- **Credential.** The `NEBIUS_API_KEY` is read only from the environment or the
+  per-user config file (see [Configuring the Nebius credential](#configuring-the-nebius-credential));
+  it is never bundled, logged, or printed.
+- **When it runs.** Only when you explicitly click **Generate** for a selected
+  finding. Scanning never contacts Nebius.
+- **What it receives — advisory metadata only.** The request contains the
+  advisory id and summary, the declared component (`name@version`), the
+  ecosystem, the declaring manifest path, and the advisory-reported fixed
+  version when present. **Dependency source code is never fetched or sent**; the
+  prompt explicitly tells the model source is unavailable, so the output is
+  advisory-grounded guidance rather than a source-level patch.
+
 ## Screenshots
 
 Captured from the running release build. The personal repository path shown in
@@ -48,15 +107,29 @@ are unaltered.
 
 **Completed scan with severity summary and a selected finding**
 
-![Strazh scan results for the demo-cookbook repository: 913 OSV advisories with a severity summary (15 Critical, 178 High, 226 Medium, 69 Low, 425 Unknown), the agno@1.7.2 GHSA-77rh-m34w-rv36 Critical finding selected, its advisory-reported fix 2.3.24, and the manifest-to-package-to-advisory relationship](./docs/screenshots/scan-findings.png)
+![Strazh scan results for the demo-cookbook repository: 547 declared dependencies and 913 OSV advisories with a severity summary (15 Critical, 178 High, 226 Medium, 69 Low, 425 Unknown), the agno@1.7.2 GHSA-77rh-m34w-rv36 (Eval Injection) Critical finding selected, its advisory-reported fix 2.3.24, and the manifest-to-package-to-advisory relationship](./docs/screenshots/scan-findings.png)
 
 **Generated AI remediation guidance, with the local Apply fix**
 
 ![Strazh AI remediation for the agno Eval Injection advisory: an Advisory section restating the issue, a Recommended remediation section advising an upgrade to the advisory-reported fixed version, and an Apply fix button that rewrites the declaring manifest locally](./docs/screenshots/ai-remediation.png)
 
-In the demo recording, selecting the Critical `agno` finding and clicking
-**Apply fix** rewrites the pinned range in `pyproject.toml` and shows:
-`Updated pyproject.toml: agno >=1.5.1 → 2.3.24` with an **Undo**.
+The [demo video](#demo-video) shows the same repository
+([`github.com/nebius/token-factory-cookbook`](https://github.com/nebius/token-factory-cookbook))
+reporting **547 declared dependencies** and **1,078 OSV findings** (including
+**31 Critical**), with the Critical `agno@1.5.1` finding
+(**GHSA-77rh-m34w-rv36**, Eval Injection) selected and **Apply fix** pinning it
+to the advisory's fixed version **2.3.24** in `pyproject.toml`, with an
+**Undo**.
+
+> **Why the screenshots and the demo video report different totals.** Both are
+> real, unaltered runs against the same repository. The declared-dependency
+> count (547) is identical; the advisory/finding totals differ because **OSV is
+> a live database that keeps adding advisory records over time** — the
+> screenshots were captured earlier (913 advisories, 15 Critical, with the
+> `agno` finding resolving to `agno@1.7.2`) and the demo video is a later run
+> (1,078 findings, 31 Critical, `agno@1.5.1`). The vulnerability
+> (GHSA-77rh-m34w-rv36, Eval Injection) and the advisory-reported fix (2.3.24)
+> are the same in both.
 
 > Note: the `ai-remediation.png` capture above shows the guidance panel before
 > the Apply fix / Undo controls were added. The Apply-fix behavior it now
