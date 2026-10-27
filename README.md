@@ -2,7 +2,7 @@
 
 # Strazh — Repository Security Scanner
 
-**License: [MIT](./LICENSE)**
+**Website: [strazh.dev](https://strazh.dev) · License: [MIT](./LICENSE)**
 
 Strazh is a desktop app (Tauri + React + Rust) that inspects a **local
 repository's declared dependencies** for known vulnerabilities and helps you
@@ -47,6 +47,11 @@ findings, 31 Critical) → select the Critical `agno@1.5.1` Eval Injection
 advisory → generate Nemotron remediation grounded in the advisory → click
 **Apply fix** to pin `agno` to the advisory's fixed version `2.3.24` in
 `pyproject.toml`, with an **Undo**.
+
+The product site at **[strazh.dev](https://strazh.dev)** has the same
+walkthrough, download links, and limitations. Its source is in
+[`website/`](./website) and deploys as a static site (Netlify, Vercel, or GitHub
+Pages — see [`website/README.md`](./website/README.md)).
 
 ## How it works
 
@@ -202,6 +207,12 @@ Optional overrides (environment variable or the same `.env`):
   `https://api.tokenfactory.nebius.com/v1`).
 
 ## Usage
+
+On first launch, a short welcome explains the scan → attack path → suggestion →
+apply flow and the local-only model. The header shows the app version and an
+**About** button (version, links to strazh.dev / GitHub / releases / license,
+and a **Check for updates** link to the GitHub Releases page). Updates are
+manual: Strazh does not auto-download or install anything.
 
 1. **Choose repository** — pick a local folder.
 2. **Run scan** — Strazh reads declared dependencies and queries OSV. Files,
