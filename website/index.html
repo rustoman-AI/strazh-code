@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strazh — Autonomous supply-chain security scanner</title>
+  <meta name="description" content="Strazh scans your repository's dependencies against the live OSV advisory database, explains the attack path, suggests grounded fixes with NVIDIA Nemotron on Nebius Token Factory, and applies conservative local version updates. Runs locally, no accounts." />
+  <meta name="theme-color" content="#0B1017" />
+  <link rel="icon" type="image/png" href="./assets/strazh-logo.png" />
+
+  <!-- Open Graph / social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Strazh — Autonomous supply-chain security" />
+  <meta property="og:description" content="Find, suggest, and apply dependency fixes. OSV + NVIDIA Nemotron on Nebius Token Factory. Local-only desktop app." />
+  <meta property="og:url" content="https://strazh.dev" />
+  <meta property="og:image" content="https://strazh.dev/assets/scan-findings.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- ── Nav ── -->
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="Strazh home">
+        <img src="./assets/strazh-logo.png" alt="Strazh logo" />
+        <span class="wordmark">STRAZH</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#download">Download</a>
+        <a href="#limitations">Limitations</a>
+        <a href="https://github.com/rustoman-AI/strazh-code" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn btn-sm btn-primary" href="#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ── Hero ── -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <div class="chips">
+            <span class="chip">OSV advisory database</span>
+            <span class="chip">NVIDIA Nemotron</span>
+            <span class="chip">Nebius Token Factory</span>
+            <span class="chip">Local-only</span>
+          </div>
+          <h1>Autonomous supply-chain security that <span class="accent">finds, suggests, and applies</span> fixes.</h1>
+          <p class="lede">
+            Strazh scans your repository's declared dependencies against the live OSV
+            database, shows the manifest&nbsp;&rarr;&nbsp;package&nbsp;&rarr;&nbsp;advisory path,
+            and uses an NVIDIA&nbsp;Nemotron model on Nebius Token Factory to suggest a grounded
+            fix you can apply locally &mdash; with one-click Undo.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download for Windows
+            </a>
+            <a class="btn" href="#demo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Watch demo
+            </a>
+            <a class="btn" href="https://github.com/rustoman-AI/strazh-code" target="_blank" rel="noopener">View on GitHub</a>
+          </div>
+          <p class="hero-note">Windows installer available now. macOS and Linux builds are planned.</p>
+        </div>
+        <figure class="hero-shot">
+          <img src="./assets/scan-findings.png" alt="Strazh scanning a repository: dependency and advisory counts, a severity summary, and a selected Critical finding with its advisory-reported fix." />
+        </figure>
+      </div>
+    </section>
+
+    <!-- ── Demo video ── -->
+    <section class="section" id="demo">
+      <div class="wrap">
+        <p class="eyebrow">Demo</p>
+        <h2 class="section-title">See it in action</h2>
+        <p class="section-lede">A short walkthrough: scan a repository, read the attack path, generate a Nemotron suggestion, and apply the fix locally.</p>
+        <div class="video-frame">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/CFnPRriDur4"
+            title="Strazh demo video"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── How it works ── -->
+    <section class="section" id="how">
+      <div class="wrap">
+        <p class="eyebrow">How it works</p>
+        <h2 class="section-title">Scan &rarr; attack path &rarr; suggestion &rarr; apply</h2>
+        <p class="section-lede">Strazh runs the whole loop locally. Nothing is pushed, committed, or opened as a pull request.</p>
+        <div class="steps">
+          <article class="step">
+            <div class="num">1</div>
+            <h3>Scan</h3>
+            <p>Reads the dependencies declared in your manifests (Cargo.toml, package.json, requirements.txt, pyproject.toml, go.mod) and queries the live OSV database for known advisories.</p>
+          </article>
+          <article class="step">
+            <div class="num">2</div>
+            <h3>Attack path</h3>
+            <p>For each finding, shows the manifest&nbsp;&rarr;&nbsp;package&nbsp;&rarr;&nbsp;advisory relationship: which file declares the vulnerable dependency, and the advisory it matched.</p>
+          </article>
+          <article class="step">
+            <div class="num">3</div>
+            <h3>Nemotron suggestion</h3>
+            <p>An NVIDIA Nemotron model on Nebius Token Factory produces remediation guidance grounded in the advisory metadata &mdash; never your source code.</p>
+          </article>
+          <article class="step">
+            <div class="num">4</div>
+            <h3>Apply &amp; Undo</h3>
+            <p>When the advisory provides a fixed version, apply a single, conservative version bump to the declaring manifest on disk &mdash; reversible with one click.</p>
+          </article>
+        </div>
+
+        <div class="shots">
+          <figure class="shot">
+            <img src="./assets/ai-remediation.png" alt="Strazh AI remediation panel: an Advisory section restating the issue and a recommended upgrade to the advisory-reported fixed version." />
+            <figcaption>Grounded remediation from Nemotron, with a local Apply fix.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="./assets/welcome.png" alt="Strazh welcome screen prompting the user to choose a local repository to scan." />
+            <figcaption>First run: pick a local repository to scan.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Features ── -->
+    <section class="section">
+      <div class="wrap">
+        <p class="eyebrow">What you get</p>
+        <h2 class="section-title">Grounded, local, and honest</h2>
+        <div class="features">
+          <article class="feature">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+            <h3>Live OSV data</h3>
+            <p>Every declared dependency with a concrete version is checked against the OSV advisory database in real time &mdash; no stale bundled snapshots.</p>
+          </article>
+          <article class="feature">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+            <h3>Severity-ranked findings</h3>
+            <p>Critical, High, Medium, Low, and Unknown totals with a recommended-actions list that ranks by severity and shared-package blast radius.</p>
+          </article>
+          <article class="feature">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+            <h3>Nemotron remediation</h3>
+            <p>Advisory-grounded fix guidance from NVIDIA Nemotron on Nebius Token Factory, generated on demand and clearly labeled as AI guidance.</p>
+          </article>
+          <article class="feature">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg></div>
+            <h3>Conservative local Apply</h3>
+            <p>Rewrites exactly one dependency version in the declaring manifest, pinning to the advisory's fixed version &mdash; with instant Undo.</p>
+          </article>
+          <article class="feature">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+            <h3>Local-only by design</h3>
+            <p>No accounts, no cloud sync. Your source never leaves your machine. Only advisory metadata is sent to OSV and Nemotron.</p>
+          </article>
+          <article class="feature">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <h3>Transparent about limits</h3>
+            <p>Findings are declaration-based, not proof of runtime reachability. Strazh tells you what it checked and what it can't confirm.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Download ── -->
+    <section class="section" id="download">
+      <div class="wrap">
+        <p class="eyebrow">Download</p>
+        <h2 class="section-title">Get Strazh</h2>
+        <p class="section-lede">Windows x64 installers from the latest GitHub release. Verify the SHA-256 before running.</p>
+        <div class="dl-grid">
+          <article class="dl-card primary">
+            <div class="dl-head">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M3 5.4 10 4.4v7.1H3zM11 4.3 21 3v8.5H11zM3 12.5h7v7.1l-7-1zM11 12.5h10V21l-10-1.4z"/></svg>
+              <span class="dl-os">Windows</span>
+              <span class="dl-badge">Available</span>
+            </div>
+            <p>Windows 10/11 (x64). Microsoft Edge WebView2 runtime is required &mdash; it's preinstalled on current Windows, and the setup offers to fetch it if missing.</p>
+            <div class="dl-actions">
+              <a class="btn btn-primary btn-sm" href="https://github.com/rustoman-AI/strazh-code/releases/download/v1.0.0-hackathon/Strazh_1.0.0_x64-setup.exe">NSIS setup (.exe)</a>
+              <a class="btn btn-sm" href="https://github.com/rustoman-AI/strazh-code/releases/download/v1.0.0-hackathon/Strazh_1.0.0_x64_en-US.msi">MSI installer</a>
+              <a class="btn btn-sm" href="https://github.com/rustoman-AI/strazh-code/releases/latest" target="_blank" rel="noopener">All releases</a>
+            </div>
+            <div class="hashes">
+              <div><b>setup.exe</b> &nbsp;SHA-256<br>E32B68657E9DD033991C49B071A2A2A8B8A482E016473632E318BD5906E42530</div>
+              <div style="margin-top:8px"><b>.msi</b> &nbsp;SHA-256<br>4F037201186FAB09295CC3D5A6B9661A5E9D117AC6E63F67786024E775BD38E6</div>
+            </div>
+            <div class="dl-verify">PS&gt; Get-FileHash .\Strazh_1.0.0_x64-setup.exe -Algorithm SHA256</div>
+          </article>
+
+          <article class="dl-card">
+            <div class="dl-head">
+              <span class="dl-os">macOS &amp; Linux</span>
+              <span class="dl-badge soon">Planned</span>
+            </div>
+            <p>
+              Strazh is built on Tauri, so macOS and Linux builds are on the roadmap.
+              Want one sooner? Open an issue on GitHub and let us know your platform.
+            </p>
+            <div class="dl-actions">
+              <a class="btn btn-sm" href="https://github.com/rustoman-AI/strazh-code/issues" target="_blank" rel="noopener">Request a build</a>
+            </div>
+            <p style="margin-top:10px">
+              Prefer to build it yourself? Clone the repo and run
+              <code class="mono">npm run tauri build</code>.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Limitations ── -->
+    <section class="section" id="limitations">
+      <div class="wrap">
+        <p class="eyebrow">Honest by default</p>
+        <h2 class="section-title">What Strazh does &mdash; and doesn't &mdash; do</h2>
+        <p class="section-lede">This matches the current app behavior. We'd rather be precise than oversell.</p>
+        <div class="limits">
+          <div class="limit">
+            <span class="lico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+            <div>
+              <h3>Declaration-based, not reachability</h3>
+              <p>A finding means a declared dependency matches an OSV advisory for the scanned version. It does not prove the vulnerable code is reached or exploitable at runtime.</p>
+            </div>
+          </div>
+          <div class="limit">
+            <span class="lico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+            <div>
+              <h3>AI guidance, not a tested patch</h3>
+              <p>Nemotron suggestions are advisory-grounded guidance, not a verified fix tested against your project. Review and test before relying on them.</p>
+            </div>
+          </div>
+          <div class="limit">
+            <span class="lico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+            <div>
+              <h3>Apply fix is conservative</h3>
+              <p>It rewrites one dependency version in one manifest, locally. If a package appears more than once or uses a complex/workspace form, it refuses and asks you to edit manually.</p>
+            </div>
+          </div>
+          <div class="limit">
+            <span class="lico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+            <div>
+              <h3>No remote actions yet</h3>
+              <p>No accounts, no cloud sync, and no automatic pull requests. Everything happens on your machine. Scanning and generating guidance never write to your project.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CTA ── -->
+    <section class="section">
+      <div class="wrap">
+        <div class="cta">
+          <h2>Find your supply-chain risks in minutes.</h2>
+          <p>Download Strazh, point it at a repository, and see what's hiding in your dependencies.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#download">Download for Windows</a>
+            <a class="btn" href="https://github.com/rustoman-AI/strazh-code" target="_blank" rel="noopener">Star on GitHub</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ── Footer ── -->
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <div class="brand">
+            <img src="./assets/strazh-logo.png" alt="" style="height:32px;border-radius:6px" />
+            <span class="wordmark" style="font-size:17px">STRAZH</span>
+          </div>
+          <p class="footer-tag">Autonomous supply-chain security: OSV + NVIDIA Nemotron on Nebius Token Factory. Find, suggest, apply &mdash; locally.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h4>Product</h4>
+            <a href="#how">How it works</a>
+            <a href="#download">Download</a>
+            <a href="#limitations">Limitations</a>
+            <a href="#demo">Demo video</a>
+          </div>
+          <div class="footer-col">
+            <h4>Project</h4>
+            <a href="https://github.com/rustoman-AI/strazh-code" target="_blank" rel="noopener">GitHub repository</a>
+            <a href="https://github.com/rustoman-AI/strazh-code/releases" target="_blank" rel="noopener">Releases</a>
+            <a href="https://github.com/rustoman-AI/strazh-code/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+          </div>
+          <div class="footer-col">
+            <h4>Contact</h4>
+            <a href="https://github.com/rustoman-AI/strazh-code/issues" target="_blank" rel="noopener">Open an issue</a>
+            <a href="https://github.com/rustoman-AI/strazh-code/discussions" target="_blank" rel="noopener">Discussions</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-legal">
+        <span>&copy; 2026 Strazh contributors. Released under the MIT License.</span>
+        <span>Built for the Nebius &times; NVIDIA Global AI Hackathon.</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

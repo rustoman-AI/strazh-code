@@ -1,8 +1,32 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Markdown } from "./Markdown";
 import "./App.css";
+
+// Public product links, surfaced in the About dialog and first-run welcome.
+const LINKS = {
+  site: "https://strazh.dev",
+  repo: "https://github.com/rustoman-AI/strazh-code",
+  releases: "https://github.com/rustoman-AI/strazh-code/releases",
+  latestRelease: "https://github.com/rustoman-AI/strazh-code/releases/latest",
+  license: "https://github.com/rustoman-AI/strazh-code/blob/main/LICENSE",
+};
+
+// localStorage key that records the first-run welcome has been dismissed.
+const FIRST_RUN_KEY = "strazh.welcome.seen.v1";
+
+// Open an external URL in the user's default browser. Falls back to a plain
+// window.open if the Tauri opener is unavailable (e.g. in the browser test env).
+async function openExternal(url: string): Promise<void> {
+  try {
+    await openUrl(url);
+  } catch {
+    try { window.open(url, "_blank", "noopener"); } catch { /* ignore */ }
+  }
+}
 
 // ──────────────────────────────────────────────────────────
 //  Types mirrored from the Rust backend (unchanged scan logic)
@@ -192,6 +216,28 @@ export default function StrazhApp() {
   const [applyMsg, setApplyMsg] = useState<string>("");
   // Original manifest text + path captured before an apply, for Undo.
   const [applyUndo, setApplyUndo] = useState<{ manifest: string; original: string } | null>(null);
+
+  // App version (from tauri.conf.json via the Tauri app API) and the two
+  // dialogs for public polish: a one-time first-run welcome and an About box.
+  const [appVersion, setAppVersion] = useState<string>("");
+  const [showAbout, setShowAbout] = useState<boolean>(false);
+  const [showWelcome, setShowWelcome] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Resolve the version for the header chip + About dialog.
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+    // Show the welcome once per machine (until localStorage is cleared).
+    try {
+      if (!localStorage.getItem(FIRST_RUN_KEY)) setShowWelcome(true);
+    } catch {
+      /* localStorage unavailable — skip the welcome rather than block the app */
+    }
+  }, []);
+
+  const dismissWelcome = useCallback(() => {
+    setShowWelcome(false);
+    try { localStorage.setItem(FIRST_RUN_KEY, "1"); } catch { /* ignore */ }
+  }, []);
 
   const paths = osv?.exploitation_paths ?? [];
   const selected = selectedId !== null ? paths[selectedId] ?? null : null;
@@ -428,6 +474,21 @@ export default function StrazhApp() {
           <span className="sz-model-badge" title={`Model: ${MODEL}`}>
             Nemotron
           </span>
+          {appVersion && (
+            <span className="sz-ver-chip" title={`Strazh version ${appVersion}`}>v{appVersion}</span>
+          )}
+          <button
+            className="sz-iconbtn"
+            onClick={() => setShowAbout(true)}
+            title="About Strazh"
+            aria-label="About Strazh"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -523,8 +584,17 @@ export default function StrazhApp() {
           {phase === "failed" && (
             <div className="sz-onboard">
               <div className="sz-onboard-card">
-                <h1 className="sz-onboard-title">Scan failed</h1>
-                <p className="sz-onboard-sub sz-error-text">{scanError}</p>
+                <h1 className="sz-onboard-title">Scan couldn't finish</h1>
+                <p className="sz-onboard-sub">
+                  Strazh couldn't complete the scan of <span className="sz-mono">{repoName}</span>.
+                  Matching dependencies against OSV needs network access to{" "}
+                  <span className="sz-mono">api.osv.dev</span> — check your connection, confirm the
+                  folder is a readable repository, and try again.
+                </p>
+                <details className="sz-err-details">
+                  <summary>Technical details</summary>
+                  <p className="sz-error-text">{scanError}</p>
+                </details>
                 <button className="sz-btn sz-btn-primary" onClick={scan}>Retry scan</button>
               </div>
             </div>
@@ -700,7 +770,138 @@ export default function StrazhApp() {
         </main>
       </div>
 
+      {showWelcome && <WelcomeDialog onDismiss={dismissWelcome} configHint={CONFIG_ENV_HINT} />}
+      {showAbout && (
+        <AboutDialog version={appVersion} onClose={() => setShowAbout(false)} />
+      )}
+
       <style>{STYLES}</style>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+//  First-run welcome — one-time, explains the flow + local-only.
+// ──────────────────────────────────────────────────────────
+function WelcomeDialog({ onDismiss, configHint }: { onDismiss: () => void; configHint: string }) {
+  return (
+    <div className="sz-modal-overlay" role="dialog" aria-modal="true" aria-label="Welcome to Strazh">
+      <div className="sz-modal sz-modal-welcome">
+        <div className="sz-modal-brand">
+          <img className="sz-modal-logo" src="/strazh-logo.png" alt="Strazh" />
+          <h1 className="sz-modal-title">Welcome to Strazh</h1>
+          <p className="sz-modal-sub">
+            Strazh scans a local repository's declared dependencies for known
+            vulnerabilities, then helps you understand and fix them — all on your machine.
+          </p>
+        </div>
+
+        <ol className="sz-flow">
+          <li>
+            <span className="sz-flow-num">1</span>
+            <div>
+              <b>Scan</b>
+              <span>Reads your manifests and checks each dependency against the live OSV advisory database.</span>
+            </div>
+          </li>
+          <li>
+            <span className="sz-flow-num">2</span>
+            <div>
+              <b>Attack path</b>
+              <span>Shows the manifest → package → advisory relationship for each finding.</span>
+            </div>
+          </li>
+          <li>
+            <span className="sz-flow-num">3</span>
+            <div>
+              <b>Nemotron suggestion</b>
+              <span>Generates advisory-grounded remediation guidance with NVIDIA Nemotron on Nebius Token Factory.</span>
+            </div>
+          </li>
+          <li>
+            <span className="sz-flow-num">4</span>
+            <div>
+              <b>Apply &amp; Undo</b>
+              <span>Applies a single, conservative version bump to the declaring manifest — reversible with one click.</span>
+            </div>
+          </li>
+        </ol>
+
+        <div className="sz-welcome-note">
+          <p>
+            <b>Local-only.</b> No accounts, no cloud sync. Your source code never leaves your
+            machine — only advisory metadata is sent to OSV and Nemotron.
+          </p>
+          <p className="sz-welcome-note-dim">
+            Scanning works without a key. To enable AI remediation, add
+            <code className="sz-inline"> NEBIUS_API_KEY</code> to
+            <code className="sz-inline"> {configHint}</code> and relaunch.
+          </p>
+        </div>
+
+        <div className="sz-modal-actions">
+          <button className="sz-btn sz-btn-primary" onClick={onDismiss}>Get started</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+//  About dialog — version, description, links, check for updates.
+// ──────────────────────────────────────────────────────────
+function AboutDialog({ version, onClose }: { version: string; onClose: () => void }) {
+  // Close on Escape for a native-feeling dialog.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="sz-modal-overlay" role="dialog" aria-modal="true" aria-label="About Strazh" onClick={onClose}>
+      <div className="sz-modal sz-modal-about" onClick={(e) => e.stopPropagation()}>
+        <button className="sz-modal-close" onClick={onClose} aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        <div className="sz-modal-brand">
+          <img className="sz-modal-logo" src="/strazh-logo.png" alt="Strazh" />
+          <h1 className="sz-modal-title">Strazh</h1>
+          <span className="sz-about-ver">{version ? `Version ${version}` : "Desktop app"}</span>
+          <p className="sz-modal-sub">
+            Autonomous supply-chain security scanner. Finds OSV advisories in your
+            dependencies, suggests grounded fixes with NVIDIA Nemotron on Nebius Token
+            Factory, and applies conservative local updates.
+          </p>
+        </div>
+
+        <div className="sz-about-links">
+          <button className="sz-linkrow" onClick={() => openExternal(LINKS.site)}>
+            <span className="sz-linkrow-label">Website</span>
+            <span className="sz-linkrow-url">strazh.dev</span>
+          </button>
+          <button className="sz-linkrow" onClick={() => openExternal(LINKS.repo)}>
+            <span className="sz-linkrow-label">Source code</span>
+            <span className="sz-linkrow-url">GitHub</span>
+          </button>
+          <button className="sz-linkrow" onClick={() => openExternal(LINKS.license)}>
+            <span className="sz-linkrow-label">License</span>
+            <span className="sz-linkrow-url">MIT</span>
+          </button>
+        </div>
+
+        <div className="sz-about-update">
+          <span className="sz-about-update-txt">
+            Updates are published on GitHub Releases.
+          </span>
+          <button className="sz-btn sz-btn-sm" onClick={() => openExternal(LINKS.latestRelease)}>
+            Check for updates
+          </button>
+        </div>
+
+        <p className="sz-about-foot">Runs locally — no accounts, no cloud sync.</p>
+      </div>
     </div>
   );
 }
@@ -1037,6 +1238,11 @@ const STYLES = `
   .sz-onboard-sub{margin:0;font-size:15px;color:var(--text-2);line-height:1.6}
   .sz-onboard-card .sz-btn{height:44px;padding:0 20px}
   .sz-error-text{color:var(--sev-critical);font-family:var(--mono);font-size:13px;word-break:break-word}
+  .sz-err-details{width:100%;max-width:440px;text-align:left;background:var(--bg);border:1px solid var(--border);
+    border-radius:8px;padding:8px 12px;margin:-4px 0 4px}
+  .sz-err-details summary{cursor:pointer;font-size:13px;color:var(--text-2);user-select:none}
+  .sz-err-details summary:hover{color:var(--text)}
+  .sz-err-details p{margin:8px 0 2px}
 
   /* Progress bar */
   .sz-bar{width:100%;max-width:360px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
@@ -1178,4 +1384,64 @@ const STYLES = `
   .sz-reco-sel{border-color:var(--teal);background:rgba(32,199,187,.08)}
   .sz-reco-pkg{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
   .sz-reco-reason{font-size:12px;color:var(--text-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* Header: version chip + About icon button */
+  .sz-ver-chip{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--bg);
+    border:1px solid var(--border);border-radius:8px;padding:4px 9px;white-space:nowrap}
+  .sz-iconbtn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+    color:var(--text-2);background:var(--elev);border:1px solid var(--border);border-radius:8px;cursor:pointer;
+    transition:background .14s,border-color .14s,color .14s}
+  .sz-iconbtn:hover{background:#243244;border-color:var(--border-strong);color:var(--text)}
+  .sz-iconbtn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+  /* Modal overlay + shell (first-run welcome and About) */
+  .sz-modal-overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+    padding:24px;background:rgba(6,10,15,.72);backdrop-filter:blur(4px);animation:sz-fade .16s ease-out}
+  @keyframes sz-fade{from{opacity:0}to{opacity:1}}
+  .sz-modal{position:relative;width:min(520px,100%);max-height:calc(100vh - 48px);overflow-y:auto;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:28px;
+    box-shadow:0 30px 80px -30px rgba(0,0,0,.7);animation:sz-pop .18s ease-out}
+  @keyframes sz-pop{from{transform:translateY(8px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+  .sz-modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;display:inline-flex;
+    align-items:center;justify-content:center;color:var(--text-2);background:transparent;border:1px solid transparent;
+    border-radius:8px;cursor:pointer}
+  .sz-modal-close:hover{color:var(--text);background:var(--elev);border-color:var(--border)}
+  .sz-modal-close:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+  .sz-modal-brand{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:20px}
+  .sz-modal-logo{width:84px;height:auto;border-radius:10px;margin-bottom:2px}
+  .sz-modal-title{margin:0;font-size:24px;font-weight:700;letter-spacing:.5px}
+  .sz-modal-sub{margin:4px 0 0;font-size:14px;color:var(--text-2);line-height:1.6;max-width:420px}
+  .sz-modal-actions{display:flex;justify-content:center;margin-top:22px}
+  .sz-modal-actions .sz-btn{height:44px;padding:0 24px}
+
+  /* Welcome flow list */
+  .sz-flow{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:10px}
+  .sz-flow li{display:flex;gap:12px;align-items:flex-start;background:var(--bg);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px}
+  .sz-flow-num{flex-shrink:0;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+    border-radius:7px;background:rgba(32,199,187,.1);border:1px solid rgba(32,199,187,.35);color:var(--teal);
+    font-size:13px;font-weight:700}
+  .sz-flow li>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .sz-flow b{font-size:14px;color:var(--text)}
+  .sz-flow span:not(.sz-flow-num){font-size:13px;color:var(--text-2);line-height:1.5}
+  .sz-welcome-note{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--teal);
+    border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+  .sz-welcome-note p{margin:0;font-size:13px;color:var(--text);line-height:1.6}
+  .sz-welcome-note-dim{color:var(--text-2) !important}
+
+  /* About links + update row */
+  .sz-about-ver{font-family:var(--mono);font-size:12px;color:var(--teal);background:rgba(32,199,187,.1);
+    border:1px solid rgba(32,199,187,.35);border-radius:8px;padding:3px 10px}
+  .sz-about-links{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+  .sz-linkrow{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;
+    background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:11px 14px;cursor:pointer;
+    transition:background .12s,border-color .12s}
+  .sz-linkrow:hover{background:var(--elev);border-color:var(--border-strong)}
+  .sz-linkrow:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+  .sz-linkrow-label{font-size:14px;color:var(--text)}
+  .sz-linkrow-url{font-size:13px;color:var(--teal)}
+  .sz-about-update{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px 14px}
+  .sz-about-update-txt{font-size:13px;color:var(--text-2)}
+  .sz-about-foot{margin:16px 0 0;text-align:center;font-size:12px;color:var(--text-2)}
 `;

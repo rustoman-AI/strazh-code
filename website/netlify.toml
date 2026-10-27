@@ -1,0 +1,20 @@
+# Netlify deploy config for strazh.dev
+# The site is static (no build step). If this file lives at the repo root,
+# "base" points Netlify at the website/ folder; "publish" is relative to it.
+
+[build]
+  base = "website"
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
