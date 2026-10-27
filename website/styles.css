@@ -118,6 +118,8 @@ h2.section-title {
 .btn-primary { background: var(--teal); border-color: var(--teal); color: #06201e; }
 .btn-primary:hover { background: #2ad6c9; border-color: #2ad6c9; }
 .btn-sm { height: 36px; padding: 0 14px; font-size: 14px; }
+.btn-lg { height: 50px; padding: 0 24px; font-size: 16px; }
+.btn-block { width: 100%; }
 .btn svg { width: 18px; height: 18px; }
 
 /* ── Hero ── */
@@ -148,6 +150,8 @@ h2.section-title {
 }
 .hero h1 .accent { color: var(--teal); }
 .hero p.lede { margin: 0 0 28px; font-size: 19px; color: var(--text-2); max-width: 560px; }
+.hero-audience { margin: 0 0 22px; font-size: 15px; color: var(--text-2); max-width: 540px; }
+.hero-audience strong { color: var(--text); }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; }
 .hero-note { margin: 20px 0 0; font-size: 13px; color: var(--text-2); }
 .hero-shot {
@@ -268,6 +272,57 @@ h2.section-title {
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
   font-family: var(--mono); font-size: 12px; color: var(--text-2); overflow-x: auto;
 }
+
+/* ── Pricing ── */
+.pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 860px; }
+@media (max-width: 720px) { .pricing { grid-template-columns: 1fr; } }
+.price-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+}
+.price-card.featured { border-color: var(--teal); box-shadow: 0 0 0 1px rgba(32, 199, 187, 0.25), 0 24px 60px -32px rgba(32, 199, 187, 0.3); }
+.price-ribbon {
+  position: absolute; top: -11px; left: 28px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  color: #06201e; background: var(--teal); border-radius: 6px; padding: 3px 10px;
+}
+.price-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.price-plan { font-size: 20px; font-weight: 700; }
+.price-amt { font-size: 15px; color: var(--text-2); }
+.price-amt b { font-size: 34px; color: var(--text); letter-spacing: -1px; }
+.price-per { font-size: 15px; color: var(--text-2); }
+.price-tag { margin: 0 0 18px; font-size: 14px; color: var(--text-2); min-height: 40px; }
+.price-tag b { color: var(--text); }
+.price-list { list-style: none; margin: 0 0 22px; padding: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.price-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
+.price-list li.muted { color: var(--text-2); }
+.price-list li b { color: var(--text); }
+.tick { color: var(--teal); font-weight: 700; flex-shrink: 0; }
+.tick-no { color: var(--text-2); flex-shrink: 0; }
+.price-alt { margin-top: 10px; background: transparent; border-color: var(--border); color: var(--text-2); font-weight: 500; }
+.price-alt:hover { color: var(--text); background: var(--elev); }
+
+/* How to buy */
+.howto {
+  margin-top: 28px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--teal);
+  border-radius: 12px;
+  padding: 24px 26px;
+  max-width: 860px;
+}
+.howto-title { margin: 0 0 12px; font-size: 17px; }
+.howto-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+.howto-steps li { font-size: 14px; color: var(--text-2); line-height: 1.6; }
+.howto-steps li b { color: var(--text); }
+.howto-steps code, .howto-note code { font-family: var(--mono); font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--teal); }
+.howto-note { margin: 16px 0 0; font-size: 13px; color: var(--text-2); }
 
 /* ── Limitations ── */
 .limits { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }

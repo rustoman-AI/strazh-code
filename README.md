@@ -36,6 +36,27 @@ nothing to disk**. The only change Strazh can make is the explicit, local
 version in a manifest on your machine (and can be undone). Nothing is ever sent
 to a remote host or opened as a pull request.
 
+## Free vs Pro
+
+Strazh is free to download and use for finding and understanding risk.
+**Apply fix** (the one-click local manifest edit, with Undo) is a **Pro** feature.
+Pricing and checkout are at **[strazh.dev/#pricing](https://strazh.dev/#pricing)**.
+
+| Capability | Free | Pro |
+|---|:---:|:---:|
+| Unlimited local scans | ✓ | ✓ |
+| Findings + severity summary | ✓ | ✓ |
+| Attack path (manifest → package → advisory) | ✓ | ✓ |
+| Nemotron fix suggestions | ✓ | ✓ |
+| **Apply fix** (local version bump) + **Undo** | — | ✓ |
+| Priority support | — | ✓ |
+| Price | $0 | $29/mo or $249/yr |
+
+The Pro license is a signed key validated **locally** (no account, no server, no
+telemetry). After buying, you receive a key by email and paste it into the app at
+**About → License → Activate**. See [`docs/licensing.md`](./docs/licensing.md) for the key
+format, how to generate/validate keys, test keys, and the honest local-gate security note.
+
 ## Demo video
 
 [Watch the 3-minute demo on YouTube](https://www.youtube.com/watch?v=CFnPRriDur4)
@@ -228,12 +249,13 @@ manual: Strazh does not auto-download or install anything.
    the dependency (evidence from the scan). This indicates declaration, not
    runtime reachability.
 6. **Generate guidance** — request AI remediation for the selected finding.
-7. **Apply fix (optional, local)** — when the advisory provides a fixed version,
-   an **Apply fix → `<version>`** button appears under the guidance. Clicking it
-   rewrites that one dependency's version in the declaring manifest on disk and
-   shows a confirmation such as
-   `Updated pyproject.toml: agno >=1.5.1 → 2.3.24`, with an **Undo** that
-   restores the original file content.
+7. **Apply fix (Pro, optional, local)** — when the advisory provides a fixed
+   version, an **Apply fix → `<version>`** button appears under the guidance.
+   This is a **Pro** feature (see [Free vs Pro](#free-vs-pro)); Free users see a
+   locked button and an upgrade prompt. With Pro active, clicking it rewrites
+   that one dependency's version in the declaring manifest on disk and shows a
+   confirmation such as `Updated pyproject.toml: agno >=1.5.1 → 2.3.24`, with an
+   **Undo** that restores the original file content.
 
 ### Apply fix (local manifest edit)
 

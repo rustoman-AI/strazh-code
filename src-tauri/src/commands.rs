@@ -936,6 +936,16 @@ pub fn apply_manifest_fix(
         original_content: String::new(),
     };
 
+    // Pro gate (defense in depth): Apply fix writes to disk and is a paid
+    // feature. The UI already blocks Free users, but enforce it here too so the
+    // command can't be driven directly without a valid Pro license.
+    if !crate::license::status_from_key(crate::license::read_stored()).pro {
+        return Ok(not_applicable(
+            "Apply fix is a Strazh Pro feature. Add a Pro license key in About → License, \
+             or get one at https://strazh.dev/#pricing. (Scanning and AI suggestions stay free.)",
+        ));
+    }
+
     // Basic validation.
     if to_version.trim().is_empty() {
         return Ok(not_applicable("No concrete target version to apply."));

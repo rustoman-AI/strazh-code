@@ -116,6 +116,59 @@ fn main() {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // ── Pro license validation (HMAC key gate) ──
+    {
+        use cyclonedx_tauri_ui_lib::license::{sign, status_from_key, validate, LicensePayload};
+
+        let mk = |name: &str, plan: &str, exp: u64| sign(&LicensePayload {
+            name: name.into(), plan: plan.into(), exp,
+        });
+
+        // Valid perpetual Pro key unlocks.
+        let pro = mk("acme", "pro", 0);
+        check!("valid Pro key -> pro", status_from_key(Some(pro.clone())).pro, true);
+        check!("valid Pro key validates", validate(&pro).is_ok(), true);
+
+        // Far-future Pro key (subscription-like) unlocks.
+        let sub_pro = status_from_key(Some(mk("acme", "pro", 4_102_444_800))).pro;
+        check!("far-future Pro key -> pro", sub_pro, true);
+
+        // Expired Pro key is rejected with an "expired" plan label.
+        // (Bind results first — the check! macro evaluates its arg twice.)
+        let expired = status_from_key(Some(mk("acme", "pro", 1)));
+        let expired_pro = expired.pro;
+        let expired_plan = expired.plan.clone();
+        check!("expired Pro key -> not pro", expired_pro, false);
+        check!("expired Pro key -> plan=expired", expired_plan, "expired".to_string());
+
+        // Non-Pro plan does not unlock.
+        let free_plan_pro = status_from_key(Some(mk("acme", "free", 0))).pro;
+        check!("free-plan key -> not pro", free_plan_pro, false);
+
+        // Tampered signature is rejected.
+        let mut tampered = pro.clone();
+        tampered.pop();
+        tampered.push(if pro.ends_with('A') { 'B' } else { 'A' });
+        let tampered_invalid = validate(&tampered).is_err();
+        check!("tampered key -> invalid", tampered_invalid, true);
+
+        // Garbage / absent keys are Free.
+        let garbage_pro = status_from_key(Some("not-a-key".into())).pro;
+        let none_pro = status_from_key(None).pro;
+        check!("garbage key -> not pro", garbage_pro, false);
+        check!("no key -> not pro", none_pro, false);
+
+        // License path derives from the same per-user dir as the credential file.
+        #[cfg(windows)]
+        {
+            use cyclonedx_tauri_ui_lib::license::license_path_from;
+            let get = |k: &str| if k == "APPDATA" { Some("C:\\Users\\tester\\AppData\\Roaming".to_string()) } else { None };
+            let p = license_path_from(&get).map(|p| p.to_string_lossy().replace('/', "\\"));
+            let want = Some("C:\\Users\\tester\\AppData\\Roaming\\com.strazh.app\\license.key".to_string());
+            check!("license path uses APPDATA\\com.strazh.app\\license.key", p, want);
+        }
+    }
+
     println!("\n{}/{} checks passed, {} failed", checks - failures, checks, failures);
     if failures > 0 {
         std::process::exit(1);

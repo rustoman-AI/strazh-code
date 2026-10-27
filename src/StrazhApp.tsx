@@ -189,6 +189,17 @@ interface ApplyFixResult {
   original_content: string;
 }
 
+// Mirrors crate::license::LicenseStatus (Rust). Apply fix is Pro-only.
+interface LicenseStatus {
+  pro: boolean;
+  plan: string; // "none" | "pro" | "invalid" | "expired"
+  name: string;
+  exp: number; // unix seconds, 0 = perpetual
+  message: string;
+}
+
+const PRICING_URL = `${LINKS.site}/#pricing`;
+
 export default function StrazhApp() {
   const [repoPath, setRepoPath] = useState<string>("");
   const [phase, setPhase] = useState<ScanPhase>("idle");
@@ -223,16 +234,37 @@ export default function StrazhApp() {
   const [showAbout, setShowAbout] = useState<boolean>(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
 
+  // Pro license status (validated locally in Rust). Apply fix is Pro-only.
+  const [license, setLicense] = useState<LicenseStatus | null>(null);
+  const isPro = license?.pro === true;
+  // Shown when a Free user tries to Apply.
+  const [showUpgrade, setShowUpgrade] = useState<boolean>(false);
+
+  const refreshLicense = useCallback(async () => {
+    try {
+      const s = await invoke<LicenseStatus>("license_status");
+      setLicense(s);
+      return s;
+    } catch {
+      // If the command is unavailable (e.g. not a Tauri runtime), treat as Free.
+      const free: LicenseStatus = { pro: false, plan: "none", name: "", exp: 0, message: "Free plan." };
+      setLicense(free);
+      return free;
+    }
+  }, []);
+
   useEffect(() => {
     // Resolve the version for the header chip + About dialog.
     getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+    // Resolve the Pro license status.
+    refreshLicense();
     // Show the welcome once per machine (until localStorage is cleared).
     try {
       if (!localStorage.getItem(FIRST_RUN_KEY)) setShowWelcome(true);
     } catch {
       /* localStorage unavailable — skip the welcome rather than block the app */
     }
-  }, []);
+  }, [refreshLicense]);
 
   const dismissWelcome = useCallback(() => {
     setShowWelcome(false);
@@ -321,6 +353,12 @@ export default function StrazhApp() {
     const { version: current } = splitComponent(selected.target_component);
     const { target } = resolveUpgradeTarget(selected, fix?.fix_markdown ?? null);
     if (!target) return;
+    // Apply fix is a Pro feature. Free users get the upgrade prompt instead of
+    // a write. (The backend enforces this too, as defense in depth.)
+    if (!isPro) {
+      setShowUpgrade(true);
+      return;
+    }
     const pkg = splitComponent(selected.target_component).name;
     setApplyState("applying");
     setApplyMsg("");
@@ -342,7 +380,7 @@ export default function StrazhApp() {
       setApplyMsg(String(e));
       setApplyState("error");
     }
-  }, [selected, repoPath, fix, applyState]);
+  }, [selected, repoPath, fix, applyState, isPro]);
 
   // Undo the last apply by restoring the original manifest text.
   const undoFix = useCallback(async () => {
@@ -474,6 +512,15 @@ export default function StrazhApp() {
           <span className="sz-model-badge" title={`Model: ${MODEL}`}>
             Nemotron
           </span>
+          {license && (
+            <button
+              className={`sz-plan-badge sz-plan-btn ${isPro ? "pro" : "free"}`}
+              onClick={() => setShowAbout(true)}
+              title={isPro ? "Strazh Pro — manage license" : "Free plan — click to upgrade or enter a key"}
+            >
+              {isPro ? "PRO" : "FREE"}
+            </button>
+          )}
           {appVersion && (
             <span className="sz-ver-chip" title={`Strazh version ${appVersion}`}>v{appVersion}</span>
           )}
@@ -762,6 +809,8 @@ export default function StrazhApp() {
                     applyState={applyState}
                     applyMsg={applyMsg}
                     canUndo={!!applyUndo}
+                    isPro={isPro}
+                    onUpgrade={() => setShowUpgrade(true)}
                   />
                 )}
               </section>
@@ -772,7 +821,18 @@ export default function StrazhApp() {
 
       {showWelcome && <WelcomeDialog onDismiss={dismissWelcome} configHint={CONFIG_ENV_HINT} />}
       {showAbout && (
-        <AboutDialog version={appVersion} onClose={() => setShowAbout(false)} />
+        <AboutDialog
+          version={appVersion}
+          license={license}
+          onLicenseChange={setLicense}
+          onClose={() => setShowAbout(false)}
+        />
+      )}
+      {showUpgrade && (
+        <UpgradeDialog
+          onClose={() => setShowUpgrade(false)}
+          onEnterKey={() => { setShowUpgrade(false); setShowAbout(true); }}
+        />
       )}
 
       <style>{STYLES}</style>
@@ -850,13 +910,64 @@ function WelcomeDialog({ onDismiss, configHint }: { onDismiss: () => void; confi
 // ──────────────────────────────────────────────────────────
 //  About dialog — version, description, links, check for updates.
 // ──────────────────────────────────────────────────────────
-function AboutDialog({ version, onClose }: { version: string; onClose: () => void }) {
+function AboutDialog({
+  version, license, onLicenseChange, onClose,
+}: {
+  version: string;
+  license: LicenseStatus | null;
+  onLicenseChange: (s: LicenseStatus) => void;
+  onClose: () => void;
+}) {
+  // Local state for the license-key entry field.
+  const [keyInput, setKeyInput] = useState<string>("");
+  const [licBusy, setLicBusy] = useState<boolean>(false);
+  const [licError, setLicError] = useState<string>("");
+  const isPro = license?.pro === true;
+
   // Close on Escape for a native-feeling dialog.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const activate = useCallback(async () => {
+    const key = keyInput.trim();
+    if (!key || licBusy) return;
+    setLicBusy(true);
+    setLicError("");
+    try {
+      const s = await invoke<LicenseStatus>("save_license", { key });
+      onLicenseChange(s);
+      setKeyInput("");
+    } catch (e) {
+      setLicError(String(e));
+    } finally {
+      setLicBusy(false);
+    }
+  }, [keyInput, licBusy, onLicenseChange]);
+
+  const deactivate = useCallback(async () => {
+    if (licBusy) return;
+    setLicBusy(true);
+    setLicError("");
+    try {
+      const s = await invoke<LicenseStatus>("clear_license");
+      onLicenseChange(s);
+    } catch (e) {
+      setLicError(String(e));
+    } finally {
+      setLicBusy(false);
+    }
+  }, [licBusy, onLicenseChange]);
+
+  const expLabel = (() => {
+    if (!isPro || !license || license.exp === 0) return "";
+    try {
+      const d = new Date(license.exp * 1000);
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    } catch { return ""; }
+  })();
 
   return (
     <div className="sz-modal-overlay" role="dialog" aria-modal="true" aria-label="About Strazh" onClick={onClose}>
@@ -874,6 +985,55 @@ function AboutDialog({ version, onClose }: { version: string; onClose: () => voi
             dependencies, suggests grounded fixes with NVIDIA Nemotron on Nebius Token
             Factory, and applies conservative local updates.
           </p>
+        </div>
+
+        {/* License section */}
+        <div className="sz-lic">
+          <div className="sz-lic-head">
+            <span className="sz-lic-title">License</span>
+            <span className={`sz-plan-badge ${isPro ? "pro" : "free"}`}>{isPro ? "PRO" : "FREE"}</span>
+          </div>
+
+          {isPro ? (
+            <div className="sz-lic-active">
+              <p className="sz-lic-msg">
+                {license?.message || "Strazh Pro — active."}
+                {license?.name ? ` Issued to ${license.name}.` : ""}
+                {expLabel ? ` Renews/expires ${expLabel}.` : " Perpetual."}
+              </p>
+              <button className="sz-btn sz-btn-sm" onClick={deactivate} disabled={licBusy}>
+                {licBusy ? "Removing…" : "Remove key"}
+              </button>
+            </div>
+          ) : (
+            <div className="sz-lic-entry">
+              <p className="sz-lic-msg">
+                Free includes scanning, findings, attack paths, and AI suggestions.
+                <b> Apply fix</b> requires Pro. Paste your key below, or{" "}
+                <button className="sz-link-inline" onClick={() => openExternal(PRICING_URL)}>get Pro</button>.
+              </p>
+              <div className="sz-lic-row">
+                <input
+                  className="sz-input sz-lic-input"
+                  type="text"
+                  spellCheck={false}
+                  placeholder="SZ1-…"
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") activate(); }}
+                  aria-label="License key"
+                />
+                <button
+                  className="sz-btn sz-btn-primary sz-btn-sm"
+                  onClick={activate}
+                  disabled={!keyInput.trim() || licBusy}
+                >
+                  {licBusy ? "Checking…" : "Activate"}
+                </button>
+              </div>
+              {licError && <p className="sz-lic-err">{licError}</p>}
+            </div>
+          )}
         </div>
 
         <div className="sz-about-links">
@@ -907,10 +1067,55 @@ function AboutDialog({ version, onClose }: { version: string; onClose: () => voi
 }
 
 // ──────────────────────────────────────────────────────────
+//  Upgrade prompt — shown when a Free user tries to Apply.
+// ──────────────────────────────────────────────────────────
+function UpgradeDialog({ onClose, onEnterKey }: { onClose: () => void; onEnterKey: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="sz-modal-overlay" role="dialog" aria-modal="true" aria-label="Upgrade to Strazh Pro" onClick={onClose}>
+      <div className="sz-modal sz-modal-upgrade" onClick={(e) => e.stopPropagation()}>
+        <button className="sz-modal-close" onClick={onClose} aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        <div className="sz-modal-brand">
+          <span className="sz-plan-badge pro sz-upgrade-badge">PRO</span>
+          <h1 className="sz-modal-title">Apply fix is a Pro feature</h1>
+          <p className="sz-modal-sub">
+            Scanning, findings, attack paths, and AI suggestions are free. Upgrade to
+            <b> Strazh Pro</b> to apply the recommended version bump to your manifest —
+            still fully local, with one-click Undo.
+          </p>
+        </div>
+
+        <ul className="sz-upgrade-list">
+          <li><span className="sz-upgrade-tick">✓</span> Everything in Free</li>
+          <li><span className="sz-upgrade-tick">✓</span> Apply fix (with Undo)</li>
+          <li><span className="sz-upgrade-tick">✓</span> Priority support</li>
+        </ul>
+        <p className="sz-upgrade-price"><b>$29</b>/month <span>·</span> or <b>$249</b>/year</p>
+
+        <div className="sz-modal-actions sz-upgrade-actions">
+          <button className="sz-btn sz-btn-primary" onClick={() => openExternal(PRICING_URL)}>Get Pro</button>
+          <button className="sz-btn" onClick={onEnterKey}>I have a key</button>
+        </div>
+        <p className="sz-about-foot">After paying you'll get a key by email — paste it in About → License.</p>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
 //  Selected finding detail + AI remediation
 // ──────────────────────────────────────────────────────────
 function SelectedFinding({
   path, fix, fixState, fixError, onGenerate, onApply, onUndo, applyState, applyMsg, canUndo,
+  isPro, onUpgrade,
 }: {
   path: OsvPath;
   fix: NemotronFix | null;
@@ -922,6 +1127,8 @@ function SelectedFinding({
   applyState: "idle" | "applying" | "done" | "error" | "reverted";
   applyMsg: string;
   canUndo: boolean;
+  isPro: boolean;
+  onUpgrade: () => void;
 }) {
   const k = sevKey(path.severity);
   const { name, version } = splitComponent(path.target_component);
@@ -1061,27 +1268,43 @@ function SelectedFinding({
             </p>
             <Markdown source={fix.fix_markdown} />
 
-            {/* Local apply — edits the declaring manifest on disk only. */}
+            {/* Local apply — edits the declaring manifest on disk only.
+                Apply fix is a Pro feature: Free users see a locked button that
+                opens the upgrade prompt; the fix is otherwise applicable. */}
             <div className="sz-apply">
               <div className="sz-apply-row">
                 <button
                   className="sz-btn sz-btn-primary sz-btn-sm"
-                  onClick={onApply}
+                  onClick={canApply && !isPro ? onUpgrade : onApply}
                   disabled={!canApply || applyState === "applying" || applyState === "done"}
-                  title={canApply ? `Update ${name} to ${upgrade.target} in ${entry}` : applyDisabledReason}
+                  title={
+                    !canApply
+                      ? applyDisabledReason
+                      : isPro
+                        ? `Update ${name} to ${upgrade.target} in ${entry}`
+                        : "Apply fix is a Strazh Pro feature — click to upgrade"
+                  }
                 >
                   {applyState === "applying"
                     ? "Applying…"
                     : applyState === "done"
                       ? "Applied ✓"
-                      : canApply
-                        ? `Apply fix → ${upgrade.target}`
-                        : "Apply fix"}
+                      : !canApply
+                        ? "Apply fix"
+                        : isPro
+                          ? `Apply fix → ${upgrade.target}`
+                          : `🔒 Apply fix → ${upgrade.target} (Pro)`}
                 </button>
-                {canApply && (applyState === "idle" || applyState === "reverted") && (
+                {canApply && isPro && (applyState === "idle" || applyState === "reverted") && (
                   <span className="sz-apply-hint">
                     Updates <span className="sz-mono">{entry}</span> locally
                     {upgrade.source === "advisory" ? " (advisory-reported version)" : " (version from suggestion)"}.
+                  </span>
+                )}
+                {canApply && !isPro && (applyState === "idle" || applyState === "reverted") && (
+                  <span className="sz-apply-hint">
+                    Applying fixes is a <b>Pro</b> feature.{" "}
+                    <button className="sz-link-inline" onClick={onUpgrade}>Upgrade to apply</button>.
                   </span>
                 )}
                 {!canApply && (
@@ -1444,4 +1667,42 @@ const STYLES = `
     background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px 14px}
   .sz-about-update-txt{font-size:13px;color:var(--text-2)}
   .sz-about-foot{margin:16px 0 0;text-align:center;font-size:12px;color:var(--text-2)}
+
+  /* Plan badge (header + dialogs) */
+  .sz-plan-badge{font-size:11px;font-weight:700;letter-spacing:.6px;border-radius:7px;padding:3px 8px;
+    border:1px solid transparent;line-height:1.4}
+  .sz-plan-badge.pro{color:#06201e;background:var(--teal);border-color:var(--teal)}
+  .sz-plan-badge.free{color:var(--text-2);background:var(--bg);border-color:var(--border)}
+  .sz-plan-btn{cursor:pointer}
+  .sz-plan-btn:hover{filter:brightness(1.08)}
+  .sz-plan-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+  /* Inline text link (buttons styled as links inside hints/paragraphs) */
+  .sz-link-inline{background:none;border:none;padding:0;margin:0;font:inherit;color:var(--teal);
+    cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+  .sz-link-inline:hover{color:#2ad6c9}
+  .sz-link-inline:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
+
+  /* License section in About */
+  .sz-lic{margin-bottom:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px}
+  .sz-lic-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .sz-lic-title{font-size:12px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-2)}
+  .sz-lic-msg{margin:0 0 10px;font-size:13px;color:var(--text-2);line-height:1.6}
+  .sz-lic-msg b{color:var(--text)}
+  .sz-lic-row{display:flex;gap:8px}
+  .sz-lic-input{flex:1;min-width:0;font-family:var(--mono);font-size:12px}
+  .sz-lic-active{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .sz-lic-err{margin:8px 0 0;font-size:12px;color:var(--sev-high);word-break:break-word}
+
+  /* Upgrade dialog */
+  .sz-modal-upgrade{width:min(440px,100%)}
+  .sz-upgrade-badge{margin-bottom:10px;font-size:12px;padding:4px 12px}
+  .sz-upgrade-list{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:8px}
+  .sz-upgrade-list li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);
+    background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .sz-upgrade-tick{color:var(--teal);font-weight:700}
+  .sz-upgrade-price{margin:0 0 4px;text-align:center;font-size:15px;color:var(--text-2)}
+  .sz-upgrade-price b{color:var(--text);font-size:18px}
+  .sz-upgrade-price span{opacity:.5;margin:0 4px}
+  .sz-upgrade-actions{gap:10px;flex-wrap:wrap}
 `;

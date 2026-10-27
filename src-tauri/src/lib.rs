@@ -23,6 +23,7 @@ mod unified_graph;
 mod query_engine;
 pub mod osv_client;
 pub mod nebius_client;
+pub mod license;
 mod nova_shield;
 pub mod patch_generator;
 mod attack_graph;
@@ -143,6 +144,37 @@ async fn send_notification(app_handle: tauri::AppHandle, title: String, body: St
     // Use Tauri event to trigger notification in frontend (more reliable across platforms)
     let _ = app_handle.emit("desktop-notification", serde_json::json!({ "title": title, "body": body }));
     Ok(())
+}
+
+// ── Pro licensing (local-only, offline) ────────────────────────────────────
+// Free users get scanning, findings, attack paths, and Nemotron suggestions.
+// Apply fix (+ Undo) is gated behind a valid Pro license. Validation is local
+// (HMAC); see src/license.rs for the honest security caveat.
+
+/// Current license status, derived from the key stored on disk (if any).
+#[tauri::command]
+fn license_status() -> crate::license::LicenseStatus {
+    crate::license::status_from_key(crate::license::read_stored())
+}
+
+/// Validate a pasted key; persist it only if it validates. Returns the new
+/// status either way (so the UI can show the reason on failure).
+#[tauri::command]
+fn save_license(key: String) -> Result<crate::license::LicenseStatus, String> {
+    match crate::license::validate(&key) {
+        Ok(_) => {
+            crate::license::write_stored(&key)?;
+            Ok(crate::license::status_from_key(Some(key)))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Remove the stored key (revert to Free).
+#[tauri::command]
+fn clear_license() -> Result<crate::license::LicenseStatus, String> {
+    crate::license::remove_stored()?;
+    Ok(crate::license::status_from_key(None))
 }
 
 /// The application identifier, kept in sync with tauri.conf.json. Used to
@@ -461,6 +493,9 @@ pub fn run() {
             chat_with_strazh,
             commands::generate_nemotron_fix,
             send_notification,
+            license_status,
+            save_license,
+            clear_license,
             commands::engine_generate_exploit_poc,
             commands::engine_get_mcp_servers,
             commands::engine_connect_mcp_server,

@@ -28,6 +28,7 @@
       </a>
       <nav class="nav-links" aria-label="Primary">
         <a href="#how">How it works</a>
+        <a href="#pricing">Pricing</a>
         <a href="#download">Download</a>
         <a href="#limitations">Limitations</a>
         <a href="https://github.com/rustoman-AI/strazh-code" target="_blank" rel="noopener">GitHub</a>
@@ -54,10 +55,14 @@
             and uses an NVIDIA&nbsp;Nemotron model on Nebius Token Factory to suggest a grounded
             fix you can apply locally &mdash; with one-click Undo.
           </p>
+          <p class="hero-audience">
+            For <strong>developers and small teams</strong> who want to find and fix
+            supply-chain issues without waiting for a security review.
+          </p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#download">
+            <a class="btn btn-primary btn-lg" href="#download">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download for Windows
+              Download for Windows &mdash; Free
             </a>
             <a class="btn" href="#demo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -65,7 +70,7 @@
             </a>
             <a class="btn" href="https://github.com/rustoman-AI/strazh-code" target="_blank" rel="noopener">View on GitHub</a>
           </div>
-          <p class="hero-note">Windows installer available now. macOS and Linux builds are planned.</p>
+          <p class="hero-note">Free to scan. Windows installer available now &mdash; macOS and Linux builds are planned.</p>
         </div>
         <figure class="hero-shot">
           <img src="./assets/scan-findings.png" alt="Strazh scanning a repository: dependency and advisory counts, a severity summary, and a selected Critical finding with its advisory-reported fix." />
@@ -173,12 +178,82 @@
       </div>
     </section>
 
+    <!-- ── Pricing ── -->
+    <section class="section" id="pricing">
+      <div class="wrap">
+        <p class="eyebrow">Pricing</p>
+        <h2 class="section-title">Start free. Upgrade when you want to fix.</h2>
+        <p class="section-lede">Scanning, findings, attack paths, and AI suggestions are free forever. Pro unlocks one-click local Apply fix (with Undo).</p>
+
+        <div class="pricing">
+          <!-- Free -->
+          <article class="price-card">
+            <div class="price-head">
+              <span class="price-plan">Free</span>
+              <span class="price-amt"><b>$0</b></span>
+            </div>
+            <p class="price-tag">Everything you need to find and understand risk.</p>
+            <ul class="price-list">
+              <li><span class="tick">✓</span> Unlimited local scans</li>
+              <li><span class="tick">✓</span> View findings &amp; severity summary</li>
+              <li><span class="tick">✓</span> Attack-path relationship (manifest → package → advisory)</li>
+              <li><span class="tick">✓</span> Nemotron fix suggestions</li>
+              <li class="muted"><span class="tick-no">—</span> Apply fix is Pro-only</li>
+            </ul>
+            <a class="btn btn-block" href="#download">Download Free</a>
+          </article>
+
+          <!-- Pro -->
+          <article class="price-card featured">
+            <div class="price-ribbon">Most popular</div>
+            <div class="price-head">
+              <span class="price-plan">Pro</span>
+              <span class="price-amt"><b>$29</b><span class="price-per">/month</span></span>
+            </div>
+            <p class="price-tag">Everything in Free, plus apply fixes in one click. <b>$249/year</b> (save ~28%).</p>
+            <ul class="price-list">
+              <li><span class="tick">✓</span> Everything in Free</li>
+              <li><span class="tick">✓</span> <b>Apply fix</b> — conservative local version bump</li>
+              <li><span class="tick">✓</span> One-click <b>Undo</b></li>
+              <li><span class="tick">✓</span> Priority support</li>
+            </ul>
+
+            <!--
+              ============================================================
+              GET PRO CHECKOUT LINK — REPLACE BEFORE GOING LIVE
+              Drop your Stripe Payment Link or Lemon Squeezy checkout URL
+              into BOTH hrefs below (monthly + yearly). Examples:
+                Stripe:        https://buy.stripe.com/xxxxxxxxxxxx
+                Lemon Squeezy: https://strazh.lemonsqueezy.com/buy/xxxxxxxx
+              After payment, send the buyer their license key (generate it
+              with: cargo run --bin keygen -- --name "<order id>" --plan pro).
+              They paste it into the app: About → License → Activate.
+              ============================================================
+            -->
+            <a class="btn btn-primary btn-block" href="https://buy.stripe.com/REPLACE_ME_MONTHLY" data-plan="pro-monthly">Get Pro — $29/mo</a>
+            <a class="btn btn-block price-alt" href="https://buy.stripe.com/REPLACE_ME_YEARLY" data-plan="pro-yearly">Or $249/year</a>
+          </article>
+        </div>
+
+        <!-- How to buy -->
+        <div class="howto">
+          <h3 class="howto-title">How to buy</h3>
+          <ol class="howto-steps">
+            <li><b>Pay</b> via the Get Pro checkout above.</li>
+            <li><b>Receive your license key</b> by email (format <code class="mono">SZ1-…</code>).</li>
+            <li><b>Paste it into the app</b>: open <b>About → License</b>, enter the key, and click <b>Activate</b>. Apply fix unlocks immediately — all local, no account.</li>
+          </ol>
+          <p class="howto-note">Already downloaded Strazh? You don't need to reinstall — just add your key in About → License.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- ── Download ── -->
     <section class="section" id="download">
       <div class="wrap">
         <p class="eyebrow">Download</p>
         <h2 class="section-title">Get Strazh</h2>
-        <p class="section-lede">Windows x64 installers from the latest GitHub release. Verify the SHA-256 before running.</p>
+        <p class="section-lede">Free to download and scan. Windows x64 installers from the latest GitHub release — verify the SHA-256 before running.</p>
         <div class="dl-grid">
           <article class="dl-card primary">
             <div class="dl-head">
@@ -289,6 +364,7 @@
           <div class="footer-col">
             <h4>Product</h4>
             <a href="#how">How it works</a>
+            <a href="#pricing">Pricing</a>
             <a href="#download">Download</a>
             <a href="#limitations">Limitations</a>
             <a href="#demo">Demo video</a>
