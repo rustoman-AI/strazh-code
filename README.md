@@ -71,8 +71,10 @@ advisory → generate Nemotron remediation grounded in the advisory → click
 
 The product site at **[strazh.dev](https://strazh.dev)** has the same
 walkthrough, download links, and limitations. Its source is in
-[`website/`](./website) and deploys as a static site (Netlify, Vercel, or GitHub
-Pages — see [`website/README.md`](./website/README.md)).
+[`website/`](./website) and is served as a static site over HTTPS from
+**[strazh.dev](https://strazh.dev)**. The `website/` tree is host-agnostic and
+also carries Netlify/Vercel/Pages configs (see
+[`website/README.md`](./website/README.md)) if you prefer a managed static host.
 
 ## How it works
 
