@@ -1,14 +1,24 @@
 name: Deploy strazh.dev
 
-# Publishes the static marketing site in website/ to GitHub Pages.
-# The custom domain (strazh.dev) comes from website/CNAME.
+# DISABLED 2026-10-28: strazh.dev is now served from the AWS host
+# (rtap-strazh-prod, 52.207.175.172) via nginx, not GitHub Pages.
+# Automatic triggers are turned off so pushes to website/** no longer run
+# this workflow (it would fail — Pages is not enabled for this repo).
+# Kept for reference / possible future re-enable. To re-enable, restore the
+# push trigger below and enable Pages (Settings -> Pages -> Source: GitHub Actions).
+# website/CNAME is left in place; harmless while hosting on AWS.
 
+# Original triggers (disabled):
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - "website/**"
+#       - ".github/workflows/deploy-site.yml"
+#   workflow_dispatch:
+
+# Manual-only: never runs automatically, only if explicitly dispatched.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "website/**"
-      - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
 permissions:
