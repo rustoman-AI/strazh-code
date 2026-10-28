@@ -220,34 +220,27 @@
 
             <!--
               ============================================================
-              GET PRO CHECKOUT LINKS — REPLACE BEFORE GOING LIVE
-              Pick ONE provider (Stripe or Lemon Squeezy), not both.
-              Where each real URL goes — replace ONLY the placeholder
-              token inside the href, keeping the rest of the URL intact:
-                Monthly button (next line):
-                  REPLACE_ME_MONTHLY -> your $29/month checkout URL
-                Yearly button (line after that):
-                  REPLACE_ME_YEARLY  -> your $249/year checkout URL
-              Stripe: in the Stripe Dashboard, create a Payment Link for
-                each price, then paste the full link, e.g.
-                https://buy.stripe.com/xxxxxxxxxxxx
-              Lemon Squeezy: create a buy link for each price, then paste
-                the full link, e.g.
-                https://strazh.lemonsqueezy.com/buy/xxxxxxxx
-                (replace the whole buy.stripe.com URL with it).
-              NEVER paste a secret key, API key, or token here — a
-              Payment Link / buy link is a public checkout URL and is
-              all this page needs.
-              Before deploying, verify with a test purchase and check:
-                grep -r "REPLACE_ME" website/   (must return nothing)
+              GET PRO CHECKOUT LINKS — LIVE (Stripe, Nuculo Incorporated)
+              Monthly button (next line):
+                Strazh Pro, $29/month, recurring
+                Payment Link plink_1UVUaXKiVCCDD3izqFLFKv9h
+                Price price_1UVUaNKiVCCDD3izJWKcSH1K
+              Yearly button (line after that):
+                Strazh Pro, $249/year, recurring
+                Payment Link plink_1UVUaZKiVCCDD3izsR0207NT
+                Price price_1UVUaOKiVCCDD3izRf7fmDqg
+              Product: prod_VWXfIN6iIcJOdG (Strazh Pro, service)
+              These are public checkout URLs — never paste a secret key,
+              API key, or token here. To change prices, create new prices
+              / Payment Links in Stripe and update the two hrefs below.
               After payment, send the buyer their license key (generate
               it with: cargo run --bin keygen -- --name "<order id>"
               --plan pro). They paste it into the app:
               About → License → Activate. See #after-payment below.
               ============================================================
             -->
-            <a class="btn btn-primary btn-block" href="https://buy.stripe.com/REPLACE_ME_MONTHLY" data-plan="pro-monthly">Get Pro — $29/mo</a>
-            <a class="btn btn-block price-alt" href="https://buy.stripe.com/REPLACE_ME_YEARLY" data-plan="pro-yearly">Or $249/year</a>
+            <a class="btn btn-primary btn-block" href="https://buy.stripe.com/3cIfZi9Xu2tc8FffRE0co00" data-plan="pro-monthly">Get Pro — $29/mo</a>
+            <a class="btn btn-block price-alt" href="https://buy.stripe.com/8x2dRa4Da7Nw6x75d00co01" data-plan="pro-yearly">Or $249/year</a>
           </article>
         </div>
 
