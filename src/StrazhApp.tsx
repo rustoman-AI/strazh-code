@@ -1103,6 +1103,7 @@ function UpgradeDialog({ onClose, onEnterKey }: { onClose: () => void; onEnterKe
         <div className="sz-modal-actions sz-upgrade-actions">
           <button className="sz-btn sz-btn-primary" onClick={() => openExternal(PRICING_URL)}>Get Pro</button>
           <button className="sz-btn" onClick={onEnterKey}>I have a key</button>
+          <button className="sz-btn" onClick={onClose}>Maybe later</button>
         </div>
         <p className="sz-about-foot">After paying you'll get a key by email — paste it in About → License.</p>
       </div>
@@ -1303,7 +1304,7 @@ function SelectedFinding({
                 )}
                 {canApply && !isPro && (applyState === "idle" || applyState === "reverted") && (
                   <span className="sz-apply-hint">
-                    Applying fixes is a <b>Pro</b> feature.{" "}
+                    Pro unlocks Apply fix — scan free, fix with Pro.{" "}
                     <button className="sz-link-inline" onClick={onUpgrade}>Upgrade to apply</button>.
                   </span>
                 )}

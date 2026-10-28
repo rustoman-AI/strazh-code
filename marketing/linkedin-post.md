@@ -27,7 +27,7 @@ A few things I'm keeping honest:
 • The AI suggestion is guidance, not a tested patch — review before you ship.
 • Apply fix is intentionally conservative: clean, single-version cases only.
 
-Free to scan and get suggestions. Applying fixes is a $29/mo Pro feature.
+Free to scan and get suggestions. Applying fixes is a Pro feature: $29/month or $249/year.
 
 ▶️ Demo: https://www.youtube.com/watch?v=CFnPRriDur4
 🌐 Download: https://strazh.dev

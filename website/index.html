@@ -220,14 +220,30 @@
 
             <!--
               ============================================================
-              GET PRO CHECKOUT LINK — REPLACE BEFORE GOING LIVE
-              Drop your Stripe Payment Link or Lemon Squeezy checkout URL
-              into BOTH hrefs below (monthly + yearly). Examples:
-                Stripe:        https://buy.stripe.com/xxxxxxxxxxxx
-                Lemon Squeezy: https://strazh.lemonsqueezy.com/buy/xxxxxxxx
-              After payment, send the buyer their license key (generate it
-              with: cargo run --bin keygen -- --name "<order id>" --plan pro).
-              They paste it into the app: About → License → Activate.
+              GET PRO CHECKOUT LINKS — REPLACE BEFORE GOING LIVE
+              Pick ONE provider (Stripe or Lemon Squeezy), not both.
+              Where each real URL goes — replace ONLY the placeholder
+              token inside the href, keeping the rest of the URL intact:
+                Monthly button (next line):
+                  REPLACE_ME_MONTHLY -> your $29/month checkout URL
+                Yearly button (line after that):
+                  REPLACE_ME_YEARLY  -> your $249/year checkout URL
+              Stripe: in the Stripe Dashboard, create a Payment Link for
+                each price, then paste the full link, e.g.
+                https://buy.stripe.com/xxxxxxxxxxxx
+              Lemon Squeezy: create a buy link for each price, then paste
+                the full link, e.g.
+                https://strazh.lemonsqueezy.com/buy/xxxxxxxx
+                (replace the whole buy.stripe.com URL with it).
+              NEVER paste a secret key, API key, or token here — a
+              Payment Link / buy link is a public checkout URL and is
+              all this page needs.
+              Before deploying, verify with a test purchase and check:
+                grep -r "REPLACE_ME" website/   (must return nothing)
+              After payment, send the buyer their license key (generate
+              it with: cargo run --bin keygen -- --name "<order id>"
+              --plan pro). They paste it into the app:
+              About → License → Activate. See #after-payment below.
               ============================================================
             -->
             <a class="btn btn-primary btn-block" href="https://buy.stripe.com/REPLACE_ME_MONTHLY" data-plan="pro-monthly">Get Pro — $29/mo</a>
@@ -235,13 +251,13 @@
           </article>
         </div>
 
-        <!-- How to buy -->
-        <div class="howto">
-          <h3 class="howto-title">How to buy</h3>
+        <!-- After payment -->
+        <div class="howto" id="after-payment">
+          <h3 class="howto-title">After payment</h3>
           <ol class="howto-steps">
             <li><b>Pay</b> via the Get Pro checkout above.</li>
-            <li><b>Receive your license key</b> by email (format <code class="mono">SZ1-…</code>).</li>
-            <li><b>Paste it into the app</b>: open <b>About → License</b>, enter the key, and click <b>Activate</b>. Apply fix unlocks immediately — all local, no account.</li>
+            <li><b>Receive your license key by email</b> (format <code class="mono">SZ1-…</code>). Keys are sent by email after payment — delivery is not instant, and no account is created.</li>
+            <li><b>Paste it into the app</b>: open <b>About → License</b>, enter the key, and click <b>Activate</b>. Once the key is accepted, Apply fix unlocks — all local, no account.</li>
           </ol>
           <p class="howto-note">Already downloaded Strazh? You don't need to reinstall — just add your key in About → License.</p>
         </div>
